@@ -1,4 +1,11 @@
-import { ArrowRight, BoxArrowUpRight, ExclamationTriangle, PersonCircle } from "react-bootstrap-icons";
+import {
+  ArrowRight,
+  BoxArrowUpRight,
+  ExclamationTriangle,
+  PersonCircle,
+  PlusLg,
+} from "react-bootstrap-icons";
+import { Note, PageHeader, Section } from "@/components/manage/Shell.tsx";
 import { manageApi, type ManagedSystemSummary } from "@/lib/manage-api.ts";
 import { webConfig } from "@/lib/config.ts";
 
@@ -11,98 +18,114 @@ import { webConfig } from "@/lib/config.ts";
  */
 export default async function ManageDashboard() {
   const result = await manageApi.get<{ systems: ManagedSystemSummary[] }>("/manage/systems");
-  const systems = result.ok ? result.value.systems : [];
+
+  if (!result.ok) {
+    return (
+      <div className="mg-shell">
+        <PageHeader title="Your systems" />
+        <Note icon={<ExclamationTriangle aria-hidden="true" />} tone="warn" role="alert">
+          Your systems could not be loaded right now. Please refresh in a moment.
+        </Note>
+      </div>
+    );
+  }
+
+  const systems = result.value.systems;
+  if (systems.length === 0) return <EmptyState />;
 
   return (
     <div className="mg-shell">
-      {!result.ok ? (
-        <p className="mg-note" data-tone="warn" role="alert">
-          <ExclamationTriangle aria-hidden="true" />
-          Could not load your systems right now. Please refresh in a moment.
-        </p>
-      ) : systems.length === 0 ? (
-        <EmptyState />
-      ) : (
-        <>
-          <div className="mg-head">
-            <h1>Your systems</h1>
-            <p>Choose a system to edit how it appears on the web.</p>
-          </div>
-          <ul className="mg-list">
-            {systems.map((system) => (
-              <li key={system.systemId}>
-                <a className="mg-card" href={`/manage/${system.systemId}`}>
-                  {system.avatarUrl ? (
-                    <img className="mg-thumb" src={system.avatarUrl} alt="" />
-                  ) : (
-                    <PersonCircle className="mg-thumb" aria-hidden="true" />
-                  )}
-                  <span className="grow">
-                    <span className="title">{system.name ?? system.pkSystemHid}</span>
-                    <span className="sub">
-                      {webConfig.publicOrigin.replace(/^https?:\/\//, "")}
-                      {system.publicPath}
-                      {system.memberCount !== null ? ` · ${system.memberCount} members` : ""}
+      <PageHeader
+        title="Your systems"
+        description="Choose a system to edit how it appears on the web."
+        actions={
+          <a className="btn" href="/manage/claim">
+            <PlusLg aria-hidden="true" /> Claim a system
+          </a>
+        }
+      />
+
+      <ul className="mg-list">
+        {systems.map((system) => (
+          <li key={system.systemId}>
+            <a className="mg-item" href={`/manage/${system.systemId}`}>
+              {system.avatarUrl ? (
+                <img className="mg-thumb mg-thumb--round" src={system.avatarUrl} alt="" />
+              ) : (
+                <PersonCircle className="mg-thumb mg-thumb--round" aria-hidden="true" />
+              )}
+
+              <span className="mg-identity">
+                <span className="name">{system.name ?? system.pkSystemHid}</span>
+                <span className="meta">
+                  <code>
+                    {webConfig.publicOrigin.replace(/^https?:\/\//, "")}
+                    {system.publicPath}
+                  </code>
+                  {system.memberCount !== null ? (
+                    <span>
+                      {system.memberCount} {system.memberCount === 1 ? "member" : "members"}
                     </span>
-                  </span>
-                  {!system.reachable ? (
-                    <span className="mg-tag" data-tone="warn">PluralKit unreachable</span>
-                  ) : system.slug ? (
-                    <span className="mg-tag" data-tone="ok">{system.slug}</span>
-                  ) : (
-                    <span className="mg-tag">No address yet</span>
-                  )}
-                </a>
-              </li>
-            ))}
-          </ul>
-          <p style={{ marginTop: 18 }}>
-            <a className="btn" href="/manage/claim">
-              Claim another system <ArrowRight aria-hidden="true" />
+                  ) : null}
+                </span>
+              </span>
+
+              {!system.reachable ? (
+                <span className="mg-tag" data-tone="warn">PluralKit unreachable</span>
+              ) : !system.slug ? (
+                <span className="mg-tag">No address yet</span>
+              ) : null}
+              <ArrowRight aria-hidden="true" className="mg-chevron" />
             </a>
-          </p>
-        </>
-      )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
 
+/**
+ * No systems yet.
+ *
+ * Explains what claiming is for and offers the action, rather than describing a
+ * process the reader then has to go and find.
+ */
 function EmptyState() {
   return (
-    <div className="mg-shell mg-empty">
-      <h1>No systems yet</h1>
-      <p>
-        pkviewer turns a PluralKit system into a website. PluralKit keeps the
-        identity and the data; pkviewer decides how it looks on the web.
-      </p>
-      <p>To manage a system here, pkviewer needs to confirm you can act for it:</p>
-      <ol>
-        <li>
-          <strong>Usually automatic.</strong> If the Discord account you signed in
-          with is linked to a PluralKit system, pkviewer can confirm that on its
-          own.
-        </li>
-        <li>
-          <strong>Otherwise, a short code.</strong> pkviewer gives you a code to
-          put in your system description for a moment, then checks for it.
-        </li>
-      </ol>
-      <p>
-        You never have to hand pkviewer a PluralKit token. Claiming is limited
-        while pkviewer is in beta.
-      </p>
-      <p>
-        <a className="btn" href="/manage/claim" style={{ fontWeight: 600 }}>
-          Claim a system <ArrowRight aria-hidden="true" />
-        </a>
-      </p>
-      {webConfig.docsUrl ? (
+    <div className="mg-shell mg-shell--narrow">
+      <div className="mg-empty">
+        <h1>No systems yet</h1>
         <p>
-          <a className="btn" href={webConfig.docsUrl} rel="noopener">
-            Read about claiming <BoxArrowUpRight aria-hidden="true" />
-          </a>
+          pkviewer turns a PluralKit system into a website. PluralKit keeps the
+          identity and the data; pkviewer decides how it looks on the web.
         </p>
-      ) : null}
+        <p>To manage a system here, pkviewer needs to confirm you can act for it:</p>
+        <ol>
+          <li>
+            <strong>Usually automatic.</strong> If the Discord account you signed
+            in with is linked to a PluralKit system, pkviewer can confirm that on
+            its own.
+          </li>
+          <li>
+            <strong>Otherwise, a short code.</strong> pkviewer gives you a code to
+            put in your system description for a moment, then checks for it.
+          </li>
+        </ol>
+        <p>
+          You never have to hand pkviewer a PluralKit token. Claiming is limited
+          while pkviewer is in beta.
+        </p>
+        <div className="mg-actions">
+          <a className="btn primary" href="/manage/claim">
+            Claim a system <ArrowRight aria-hidden="true" />
+          </a>
+          {webConfig.docsUrl ? (
+            <a className="btn quiet" href={webConfig.docsUrl} rel="noopener">
+              Read about claiming <BoxArrowUpRight aria-hidden="true" />
+            </a>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

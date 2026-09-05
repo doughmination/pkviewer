@@ -1,0 +1,28 @@
+# Build context hygiene: everything below either does not belong in an image or
+# would silently bake a developer's machine into one.
+
+node_modules
+**/node_modules
+.next
+.next-prod
+**/.next
+**/.next-prod
+
+# The database and its WAL sidecars. A container gets a volume, never a copy of
+# somebody's development data.
+data
+**/data
+*.db
+*.db-shm
+*.db-wal
+
+# Secrets. The image must be built without them and given them at run time.
+.env
+.env.*
+!.env.example
+
+.git
+.github
+*.log
+.DS_Store
+tool-results

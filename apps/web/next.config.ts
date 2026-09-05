@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { NextConfig } from "next";
 
 /**
@@ -89,6 +90,17 @@ const config: NextConfig = {
    * server is expected to stay running, they are simply kept apart.
    */
   distDir: process.env["NEXT_DIST_DIR"] ?? ".next",
+
+  /**
+   * Standalone output for containers.
+   *
+   * Traces the modules the server actually needs and emits a self-contained
+   * directory, so the runtime image carries neither the monorepo nor its
+   * node_modules. Harmless outside Docker: `next dev` and `next start` ignore
+   * it.
+   */
+  output: "standalone",
+  outputFileTracingRoot: join(import.meta.dirname, "..", ".."),
   // The web tier renders and nothing else. It has no database driver and no
   // PluralKit client: everything comes from the API over HTTP (A1).
   transpilePackages: ["@pkviewer/shared"],

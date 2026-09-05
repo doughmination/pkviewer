@@ -13,10 +13,14 @@ function required(name: string, fallback?: string): string {
 }
 
 export const webConfig = {
-  /** Session-bearing. /login, /auth, /manage. */
-  appOrigin: required("PUBLIC_APP_ORIGIN", "http://app.localhost:3000"),
-  /** Public and shareable. / and /s/... Never receives the session cookie. */
-  publicOrigin: required("PUBLIC_USERCONTENT_ORIGIN", "http://system.localhost:3000"),
+  /**
+   * The one user-facing origin: /, /login, /auth, /manage and /s all live here.
+   *
+   * Used only where an absolute URL is genuinely required — canonical links,
+   * OpenGraph, and addresses shown for copying. Navigation within pkviewer uses
+   * relative paths, which is now always same-origin.
+   */
+  publicOrigin: required("PUBLIC_ORIGIN", "http://system.localhost:3000"),
   /** Internal only. Never reaches the browser. */
   apiOrigin: required("INTERNAL_API_ORIGIN", "http://127.0.0.1:3001"),
   /**

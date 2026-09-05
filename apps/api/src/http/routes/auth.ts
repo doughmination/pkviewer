@@ -72,7 +72,7 @@ export function authRoutes(deps: Deps): Hono {
     if (!cfg.discord.clientId || !cfg.discord.clientSecret) {
       return c.json({ error: "discord_not_configured" }, 503);
     }
-    const redirectUri = pickRedirectUri(cfg.discord.redirectUris, cfg.appOrigin);
+    const redirectUri = pickRedirectUri(cfg.discord.redirectUris, cfg.publicOrigin);
     if (!redirectUri) return c.json({ error: "no_redirect_uri_configured" }, 503);
 
     const state = randomToken(24);
@@ -172,7 +172,7 @@ export function authRoutes(deps: Deps): Hono {
       "INSERT INTO audit_events (at, account_id, action, target, detail) VALUES (?,?,?,?,?)",
     ).run(t, result.account.id, result.created ? "account.created" : "account.login", null, null);
 
-    return c.redirect(`${cfg.appOrigin}${payload.returnTo}`, 302);
+    return c.redirect(`${cfg.publicOrigin}${payload.returnTo}`, 302);
   });
 
   /** Current account. Never includes the Discord identity unless asked for by
@@ -231,5 +231,5 @@ export function canClaim(cfg: Config, discordIds: readonly string[]): boolean {
  * The codes are deliberately non-specific: they tell the user what to do, not
  * an attacker which half of the handshake failed. */
 function fail(c: Context, cfg: Config, reason: string) {
-  return c.redirect(`${cfg.appOrigin}/login?error=${encodeURIComponent(reason)}`, 302);
+  return c.redirect(`${cfg.publicOrigin}/login?error=${encodeURIComponent(reason)}`, 302);
 }

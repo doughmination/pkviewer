@@ -21,7 +21,9 @@ whose unfurler does not run JavaScript. Server-rendered `<meta>` is the point.
    deployment. No absolute pkviewer URL is ever persisted to the database; public
    URLs are composed at render time from config. Enforced by
    `scripts/check-no-hardcoded-origin.sh` in CI.
-2. **User content gets its own origin**, from day one. See O1 below.
+2. ~~**User content gets its own origin.**~~ **Reversed.** pkviewer now serves
+   everything from one user-facing origin; see O1 for what that costs and what
+   replaces it.
 3. **Management lives under `/manage/...`**, never `/s/:system/...`, so a member
    slug can never collide with an app route.
 4. **MVP slugs are `[a-z0-9-]` only.** Eliminates homograph squatting outright
@@ -49,47 +51,75 @@ whose unfurler does not run JavaScript. Server-rendered `<meta>` is the point.
 
 ## Origins
 
-**O1. Which origin serves what.** Decided, permanent.
+**O1. One user-facing origin.** *(Supersedes the two-origin split. Product
+decision, taken deliberately with the consequence below understood.)*
 
-| | Origin (beta) | Serves |
-|---|---|---|
-| Public / user content | `system.doughmination.gay` | `/`, `/docs`, `/s/<pk-id>`, `/s/<slug>`, `/s/<slug>/<member>` |
-| Application | `app.doughmination.gay` | `/login`, `/auth/...`, `/manage`, `/manage/...` |
+Everything a person visits is served from a single origin:
 
-One rule underneath: anything rendering user-authored presentation goes on the
-public origin; anything reading or writing a session goes on the app origin.
+| Path | |
+|---|---|
+| `/` | landing page |
+| `/login` | Discord sign-in |
+| `/auth/...` | OAuth callbacks, proxied to the API by the web tier |
+| `/manage/...` | authenticated management UI |
+| `/s/...` | public system and member pages |
 
-`/s/...` lives on the public origin **from day one**, even though MVP has no
-custom CSS. Those pages become user-authored presentation the moment v1.1 lands,
-and moving them then would break every public URL ever shared — the exact
-failure decision 8 exists to prevent. **The origin is therefore permanent.**
+Beta: `https://system.doughmination.gay`. Development: `http://system.localhost:3000`.
+Configured as `PUBLIC_ORIGIN`, read at runtime, never baked into a build.
 
-The public origin is the website people encounter and share. The app origin is
-the private control surface behind it.
+The API stays internal and does not become browser-facing. The browser never
+calls it directly; the web tier proxies `/auth/...` and every management read
+and write server-side, which is what keeps `INTERNAL_API_ORIGIN` internal.
 
-**O2. `__Host-` cookie prefix is non-negotiable.** It forbids a `Domain`
-attribute, pinning the session cookie to exactly one host. That is the mechanism
-making a sibling public origin safe — not the subdomain naming. It also prevents
-cookie-tossing from the public side.
+### What the previous split protected, and what replaces it
 
-**O3. `/` is permanently logged-out.** It must NEVER be session-aware. The `__Host-` cookie physically cannot reach the
-public origin, so these pages can never show "Signed in as …", "Your systems",
-"Go to your dashboard", personalised recommendations, or any account state.
+pkviewer previously served public pages and the management UI from two hosts.
+The `__Host-` cookie is pinned to one host, so a total compromise of a `/s/...`
+page could not reach the session cookie — it was never sent there. That was a
+structural guarantee, and consolidating gives it up.
 
-`/` carries an unconditional **Sign in** link to `<app origin>/login`. Any
-signed-in landing experience belongs at `/manage` on the app origin.
+**It costs nothing today.** MVP has no user-authored executable content: no HTML,
+no JavaScript, no free-form CSS. Themes are a closed vocabulary of validated
+values (six-digit hex, declared enums, allow-listed font ids) and social links
+are `href` only, validated to http(s), never fetched. There is nothing on a
+public page that could exploit sharing an origin.
 
-Documentation is a separate site, so it carries no session either way.
+**It matters for custom CSS (v1.1), which is what the split was insurance for.**
+When user CSS lands it will run on the same origin that holds the session
+cookie. CSS cannot read an httpOnly cookie, but it can exfiltrate visible DOM
+content through attribute selectors and `url()`, and it can cover the viewport
+with `position: fixed` — and a convincing fake sign-in overlay is *more*
+dangerous on an origin that genuinely serves `/login`.
+
+> **Consequence, recorded so it is not lost:** custom CSS must not simply be
+> enabled on `/s/...` under this architecture. It needs its own isolation —
+> rendering user CSS inside a sandboxed iframe with an opaque origin is the
+> natural answer, and reintroducing a separate host for that content is the
+> other. Decide this before building v1.1, not during.
+
+### What now carries the weight instead
+
+**O2. `__Host-` is still required.** It no longer separates two pkviewer hosts,
+but it still forbids a `Domain` attribute, so the cookie is pinned to exactly
+this host and no sibling subdomain — a docs site, a future service — can set or
+overwrite it.
+
+**O3. Public pages must never render session state.** This was previously
+structural: the cookie could not arrive. It is now a property of the code, so it
+is enforced by test rather than by architecture. Public page models carry no
+account, grant, session or Discord data, signed in or not.
+
+**O4. The Origin check and `SameSite=Lax` now carry the CSRF weight alone.**
+Every state-changing API request must present a recognised Origin. With one
+origin there is no second host to cross-check against, so this is the boundary.
 
 ## Public routes
 
 All first-class, not afterthoughts. Split by origin per O1:
 
-- **Public origin** — `/` landing and about, `/s/...` public system and member
-  pages. **Documentation is a separate site** (`PUBLIC_DOCS_URL`) and is not
-  served by this application; an empty value hides the links entirely.
-- **App origin** — `/login`, `/auth/...` (OAuth is session-bearing by
-  definition, so it belongs here beside `/login`), `/manage/...`.
+All served from the one origin (O1): `/`, `/login`, `/auth/...`, `/manage/...`,
+`/s/...`. **Documentation is a separate site** (`PUBLIC_DOCS_URL`) and is not
+served by this application; an empty value hides the links entirely.
 
 ## Beta
 

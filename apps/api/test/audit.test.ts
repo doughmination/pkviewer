@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { claimViaDiscordLink, ensureSystemRow } from "../src/claims/index.ts";
+import { createSession } from "../src/auth/sessions.ts";
+import { loadConfig } from "../src/config/index.ts";
+import { publicRoutes } from "../src/http/routes/public.ts";
 import { openDb, type Db } from "../src/db/index.ts";
 import { migrate } from "../src/db/migrate.ts";
 import { saveTheme } from "../src/manage/index.ts";
@@ -272,6 +275,13 @@ describe("public/private boundary", () => {
 });
 
 describe("no absolute pkviewer URL is ever persisted", () => {
+  const ourOrigin = loadConfig({
+    PUBLIC_ORIGIN: "https://pkviewer.test",
+    INTERNAL_API_ORIGIN: "http://127.0.0.1:3001",
+    PK_USER_AGENT_CONTACT: "https://github.com/owner/pkviewer",
+  }).publicOrigin;
+  const ourHost = new URL(ourOrigin).host;
+
   test("across every table after a full configuration", async () => {
     const db = freshDb();
     const systemId = ensureSystemRow(db, SYS as never, Date.now());
@@ -300,8 +310,12 @@ describe("no absolute pkviewer URL is ever persisted", () => {
       const dump = JSON.stringify(db.query(`SELECT * FROM ${table}`).all());
       // PluralKit's own asset URLs are external and legitimately stored in the
       // response cache; ours never are.
-      expect(dump, table).not.toContain("system.localhost");
-      expect(dump, table).not.toContain("app.localhost");
+      // Asserted against the CONFIGURED origin rather than a literal hostname,
+      // so this keeps testing the real deployment origin whatever it becomes.
+      // PluralKit's asset URLs legitimately live in the response cache, so a
+      // blanket "contains no http" check would be wrong.
+      expect(dump, table).not.toContain(ourOrigin);
+      expect(dump, table).not.toContain(ourHost);
     }
     db.close();
   });
@@ -483,6 +497,85 @@ describe("the reset state survives storage", () => {
 
     const page = await buildMemberPage({ db, pk: pkClient() }, "tythty", "kzsbyo");
     expect(page.ok && page.value.tokens["color.accent"]).toBe("#2E7D5B");
+    db.close();
+  });
+});
+
+describe("a session cookie reaching a public page changes nothing", () => {
+  /**
+   * With one origin the session cookie is now SENT to public pages. Previously
+   * it could not arrive at all, so "public pages expose no account state" was
+   * structural. It is now a property of the code, and this is what holds it.
+   */
+  const cfg = loadConfig({
+    PUBLIC_ORIGIN: "http://system.localhost:3000",
+    INTERNAL_API_ORIGIN: "http://127.0.0.1:3001",
+    PK_USER_AGENT_CONTACT: "https://github.com/owner/pkviewer",
+    SESSION_SECRET: "s".repeat(40),
+  });
+
+  function seeded(db: Db) {
+    const now = Date.now();
+    const systemId = ensureSystemRow(db, SYS as never, now);
+    const accountId = account(db);
+    db.query(
+      "INSERT INTO discord_identities (discord_user_id, account_id, username, linked_at) VALUES (?,?,?,?)",
+    ).run("999888777666555444", accountId, "someone", now);
+    db.query(
+      "INSERT INTO grants (account_id, subject_type, subject_id, role, granted_at) VALUES (?,'system',?,'owner',?)",
+    ).run(accountId, systemId, now);
+    return { accountId, systemId, token: createSession(db, accountId, now).token };
+  }
+
+  test("the public system page is byte-identical signed in and signed out", async () => {
+    const db = freshDb();
+    const { token } = seeded(db);
+    const app = publicRoutes({ cfg, db, pk: pkClient() });
+
+    const anonymous = await app.fetch(new Request("http://system.localhost/systems/tythty"));
+    const authenticated = await app.fetch(
+      new Request("http://system.localhost/systems/tythty", {
+        headers: { cookie: `__Host-pkv_session=${token}` },
+      }),
+    );
+
+    expect(anonymous.status).toBe(200);
+    expect(authenticated.status).toBe(200);
+    expect(await authenticated.text()).toBe(await anonymous.text());
+    db.close();
+  });
+
+  test("no account, grant, session or Discord data appears even with a valid session", async () => {
+    const db = freshDb();
+    const { accountId, token } = seeded(db);
+    const app = publicRoutes({ cfg, db, pk: pkClient() });
+
+    const res = await app.fetch(
+      new Request("http://system.localhost/systems/tythty", {
+        headers: { cookie: `__Host-pkv_session=${token}` },
+      }),
+    );
+    const body = (await res.text()).toLowerCase();
+
+    expect(body).not.toContain(accountId.toLowerCase());
+    expect(body).not.toContain(token.toLowerCase());
+    expect(body).not.toContain("999888777666555444");
+    for (const leak of ["account", "grant", "session", "discord", "authenticated"]) {
+      expect(body, leak).not.toContain(leak);
+    }
+    db.close();
+  });
+
+  test("a public response never sets or clears a cookie", async () => {
+    const db = freshDb();
+    const { token } = seeded(db);
+    const app = publicRoutes({ cfg, db, pk: pkClient() });
+    const res = await app.fetch(
+      new Request("http://system.localhost/systems/tythty", {
+        headers: { cookie: `__Host-pkv_session=${token}` },
+      }),
+    );
+    expect(res.headers.getSetCookie()).toEqual([]);
     db.close();
   });
 });

@@ -37,9 +37,7 @@ function seedAccount(db: ReturnType<typeof freshDb>, now = Date.now()) {
 }
 
 const baseEnv = {
-  PUBLIC_APP_ORIGIN: "http://localhost:3000",
-  PUBLIC_USERCONTENT_ORIGIN: "http://localhost:3002",
-  PUBLIC_ASSET_ORIGIN: "http://localhost:3002",
+  PUBLIC_ORIGIN: "http://localhost:3000",
   INTERNAL_API_ORIGIN: "http://127.0.0.1:3001",
   PK_USER_AGENT_CONTACT: "https://github.com/owner/pkviewer",
 };

@@ -1,0 +1,75 @@
+# pkviewer, two containers.
+#
+#   docker compose up -d --build
+#
+# The split mirrors the architecture rather than fighting it: the API is the
+# only process that opens SQLite, so there is exactly one writer, and the web
+# tier renders and proxies.
+#
+# Configuration comes from a .env file beside this one. Nothing secret is baked
+# into an image.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    restart: unless-stopped
+    # NOTE: no `ports:`. The API is internal — the browser never calls it, the
+    # web tier proxies everything. Publishing 3001 would put the management API
+    # straight onto the host's network, which the architecture forbids. It is
+    # reachable only over the compose network, by name.
+    expose:
+      - "3001"
+    environment:
+      NODE_ENV: production
+      DATABASE_PATH: /data/pkviewer.db
+      API_HOST: 0.0.0.0
+      API_PORT: "3001"
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in .env}
+      PUBLIC_ASSET_ORIGIN: ${PUBLIC_ASSET_ORIGIN:-}
+      INTERNAL_API_ORIGIN: http://api:3001
+      PK_USER_AGENT_CONTACT: ${PK_USER_AGENT_CONTACT:?set PK_USER_AGENT_CONTACT in .env}
+      PK_API_BASE: ${PK_API_BASE:-https://api.pluralkit.me/v2}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      DISCORD_REDIRECT_URIS: ${DISCORD_REDIRECT_URIS:-}
+      BETA_MODE: ${BETA_MODE:-true}
+      SIGNUP_ENABLED: ${SIGNUP_ENABLED:-true}
+      BETA_ALLOWED_DISCORD_IDS: ${BETA_ALLOWED_DISCORD_IDS:-}
+    volumes:
+      # The one thing that must survive the container. Everything pkviewer owns
+      # lives in this file: accounts, claims, addresses, themes, links.
+      - pkviewer-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    restart: unless-stopped
+    # The only thing reachable from outside. Bind to loopback and put a TLS
+    # terminating proxy in front; `127.0.0.1:3000:3000` rather than `3000:3000`
+    # keeps it off the host's public interfaces.
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in .env}
+      INTERNAL_API_ORIGIN: http://api:3001
+      PUBLIC_DOCS_URL: ${PUBLIC_DOCS_URL:-}
+      BETA_MODE: ${BETA_MODE:-true}
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pkviewer-data:

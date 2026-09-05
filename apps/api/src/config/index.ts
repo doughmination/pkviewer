@@ -47,11 +47,30 @@ const boolish = z
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 
-  PUBLIC_APP_ORIGIN: originSchema,
-  PUBLIC_USERCONTENT_ORIGIN: originSchema,
-  PUBLIC_ASSET_ORIGIN: originSchema,
+  /** The single user-facing origin. Serves /, /login, /auth, /manage and /s. */
+  PUBLIC_ORIGIN: originSchema,
+  /**
+   * Optional; defaults to PUBLIC_ORIGIN. Reserved for serving media elsewhere.
+   *
+   * An empty value counts as absent: a .env file that lists the key with nothing
+   * after it is expressing "not set", not "set to the empty string".
+   */
+  PUBLIC_ASSET_ORIGIN: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    originSchema.optional(),
+  ),
 
   API_PORT: z.coerce.number().int().positive().default(3001),
+  /**
+   * Interface the API binds to. Loopback by default.
+   *
+   * The API is internal: the browser never calls it, the web tier proxies
+   * everything. Binding every interface would put the management API directly
+   * on the network, which is exactly what the architecture says must not
+   * happen. Containers set 0.0.0.0 because the network namespace provides the
+   * isolation instead — and must not publish the port.
+   */
+  API_HOST: z.string().min(1).default("127.0.0.1"),
   INTERNAL_API_ORIGIN: originSchema,
 
   DATABASE_PATH: z.string().min(1).default("./data/pkviewer.db"),
@@ -76,11 +95,18 @@ export type Config = Readonly<{
   nodeEnv: "development" | "test" | "production";
   isProduction: boolean;
 
-  appOrigin: string;
-  userContentOrigin: string;
+  /**
+   * The one user-facing origin.
+   *
+   * pkviewer previously split public pages from the management UI across two
+   * hosts so the session cookie could not reach user-authored presentation.
+   * That split is gone by product decision; see docs/decisions.md O1.
+   */
+  publicOrigin: string;
   assetOrigin: string;
   internalApiOrigin: string;
   apiPort: number;
+  apiHost: string;
 
   databasePath: string;
 
@@ -117,6 +143,17 @@ export class ConfigError extends Error {
  * worse than one that refuses to boot.
  */
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
+  // pkviewer used to run on two user-facing origins. A configuration still
+  // carrying the old names would otherwise fail with a confusing "PUBLIC_ORIGIN
+  // is required", so name the change instead.
+  if (!env["PUBLIC_ORIGIN"] && (env["PUBLIC_APP_ORIGIN"] || env["PUBLIC_USERCONTENT_ORIGIN"])) {
+    throw new ConfigError(
+      "PUBLIC_APP_ORIGIN and PUBLIC_USERCONTENT_ORIGIN have been replaced by a " +
+        "single PUBLIC_ORIGIN. pkviewer now serves public pages and the " +
+        "management UI from one origin. Set PUBLIC_ORIGIN and remove the other two.",
+    );
+  }
+
   const parsed = envSchema.safeParse(env);
   if (!parsed.success) {
     const detail = parsed.error.issues
@@ -146,23 +183,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     );
   }
 
-  // The user-content origin is the boundary that keeps user-authored
-  // presentation away from session cookies. Sharing an origin with the app
-  // would silently void that, so this is fatal in every environment including
-  // development — a dev setup that differs from production here would train us
-  // to write code that is only safe by accident.
-  if (e.PUBLIC_USERCONTENT_ORIGIN === e.PUBLIC_APP_ORIGIN) {
-    throw new ConfigError(
-      "PUBLIC_USERCONTENT_ORIGIN must not equal PUBLIC_APP_ORIGIN — " +
-        "user-authored presentation requires its own origin.",
-    );
-  }
-
   if (isProduction) {
     for (const [key, value] of [
-      ["PUBLIC_APP_ORIGIN", e.PUBLIC_APP_ORIGIN],
-      ["PUBLIC_USERCONTENT_ORIGIN", e.PUBLIC_USERCONTENT_ORIGIN],
-      ["PUBLIC_ASSET_ORIGIN", e.PUBLIC_ASSET_ORIGIN],
+      ["PUBLIC_ORIGIN", e.PUBLIC_ORIGIN],
+      ["PUBLIC_ASSET_ORIGIN", e.PUBLIC_ASSET_ORIGIN ?? e.PUBLIC_ORIGIN],
     ] as const) {
       if (!value.startsWith("https://")) {
         throw new ConfigError(`${key} must be https in production (got ${value})`);
@@ -205,11 +229,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     nodeEnv: e.NODE_ENV,
     isProduction,
 
-    appOrigin: e.PUBLIC_APP_ORIGIN,
-    userContentOrigin: e.PUBLIC_USERCONTENT_ORIGIN,
-    assetOrigin: e.PUBLIC_ASSET_ORIGIN,
+    publicOrigin: e.PUBLIC_ORIGIN,
+    assetOrigin: e.PUBLIC_ASSET_ORIGIN ?? e.PUBLIC_ORIGIN,
     internalApiOrigin: e.INTERNAL_API_ORIGIN,
     apiPort: e.API_PORT,
+    apiHost: e.API_HOST,
 
     databasePath: e.DATABASE_PATH,
 

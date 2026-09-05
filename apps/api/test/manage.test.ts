@@ -27,9 +27,7 @@ const MEMBERS = [
 ];
 
 const cfg = loadConfig({
-  PUBLIC_APP_ORIGIN: "http://app.localhost:3000",
-  PUBLIC_USERCONTENT_ORIGIN: "http://system.localhost:3000",
-  PUBLIC_ASSET_ORIGIN: "http://system.localhost:3000",
+  PUBLIC_ORIGIN: "http://system.localhost:3000",
   INTERNAL_API_ORIGIN: "http://127.0.0.1:3001",
   PK_USER_AGENT_CONTACT: "https://github.com/owner/pkviewer",
   SESSION_SECRET: "x".repeat(40),
@@ -79,13 +77,13 @@ function seedOwnedSystem(db: Db, accountId: string): string {
 /** Builds a request carrying a real session cookie, as the browser would. */
 function requestFor(db: Db, accountId: string | null, path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
-  headers.set("origin", cfg.appOrigin);
+  headers.set("origin", cfg.publicOrigin);
   if (init.body) headers.set("content-type", "application/json");
   if (accountId) {
     const { token } = createSession(db, accountId, Date.now());
     headers.set("cookie", `__Host-pkv_session=${token}`);
   }
-  return new Request(`http://app.localhost${path}`, { ...init, headers });
+  return new Request(`http://system.localhost${path}`, { ...init, headers });
 }
 
 function app(db: Db, pk = pkStub()) {
@@ -174,7 +172,7 @@ describe("authorization", () => {
 
     const send = (origin: string | null) =>
       guarded.fetch(
-        new Request(`http://app.localhost/systems/${systemId}/theme`, {
+        new Request(`http://system.localhost/systems/${systemId}/theme`, {
           method: "PUT",
           headers: {
             cookie: `__Host-pkv_session=${token}`,
@@ -187,7 +185,7 @@ describe("authorization", () => {
 
     expect((await send(null)).status).toBe(403);
     expect((await send("https://evil.test")).status).toBe(403);
-    expect((await send(cfg.appOrigin)).status).toBe(200);
+    expect((await send(cfg.publicOrigin)).status).toBe(200);
 
     // Only the legitimate request should have written anything.
     expect(readTheme(db, "system", systemId).tokens).toEqual({ density: "compact" });

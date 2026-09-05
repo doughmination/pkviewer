@@ -33,7 +33,7 @@ async function proxy(request: NextRequest, segments: string[], method: "GET" | "
       headers: {
         cookie: cookieHeader,
         // The API rejects state-changing requests without a recognised Origin.
-        origin: webConfig.appOrigin,
+        origin: webConfig.publicOrigin,
         accept: "application/json",
       },
       // The API's redirect goes to Discord and must reach the browser, not be
@@ -42,7 +42,7 @@ async function proxy(request: NextRequest, segments: string[], method: "GET" | "
       cache: "no-store",
     });
   } catch {
-    return Response.redirect(`${webConfig.appOrigin}/login?error=unavailable`, 302);
+    return Response.redirect(`${webConfig.publicOrigin}/login?error=unavailable`, 302);
   }
 
   const headers = new Headers();

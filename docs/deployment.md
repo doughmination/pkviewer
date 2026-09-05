@@ -6,8 +6,7 @@ Two processes on one machine, behind a reverse proxy that terminates TLS:
 
 ```
             ┌──────────────────────────────┐
- public ────┤  proxy                       │
- app    ────┤  routes both hostnames        │
+ users  ────┤  proxy (TLS)                 │
             └──────────────┬───────────────┘
                            │
                     apps/web  (Node)      :3000
@@ -17,14 +16,16 @@ Two processes on one machine, behind a reverse proxy that terminates TLS:
                     SQLite file on a persistent disk
 ```
 
-Both hostnames point at the same Next process; middleware decides which routes
-each may answer, from the `Host` header.
+One hostname, one Next process. There is no origin-based routing: every route
+is served from the same origin.
 
 **This cannot run on a serverless platform.** SQLite needs a persistent disk and
 a single long-lived writer. A small VPS, or a container with a real volume.
 
-Only the web tier should be reachable from the internet. The API listens on
-localhost and is not exposed.
+Only the web tier is reachable from outside. The API binds loopback by default
+(`API_HOST`, default `127.0.0.1`) — the browser never calls it, and the web tier
+proxies everything. In containers it binds `0.0.0.0` because the container
+network provides the isolation instead, and its port is never published.
 
 ## Environment variables
 
@@ -38,9 +39,8 @@ Legend: **required** = the process refuses to start without it ·
 
 | Variable | Consumed by | Notes |
 |---|---|---|
-| `PUBLIC_APP_ORIGIN` | api, web | Session-bearing origin. `/login`, `/auth`, `/manage`. Must be https in production. |
-| `PUBLIC_USERCONTENT_ORIGIN` | api, web | Public, shareable origin. `/` and `/s/...`. **Must differ from the app origin in every environment, including development** — the process refuses to start otherwise. |
-| `PUBLIC_ASSET_ORIGIN` | api | May equal the public origin. |
+| `PUBLIC_ORIGIN` | api, web | **The one user-facing origin.** Serves `/`, `/login`, `/auth/...`, `/manage/...` and `/s/...`. Must be https in production. |
+| `PUBLIC_ASSET_ORIGIN` | api | *Optional.* Defaults to `PUBLIC_ORIGIN`. Reserved for serving media elsewhere. |
 | `INTERNAL_API_ORIGIN` | web | Where the web tier reaches the API. Internal; never reaches the browser. |
 | `PUBLIC_DOCS_URL` | web | *Optional.* The separate documentation site. Empty hides every documentation link rather than producing a dead one. |
 
@@ -64,7 +64,7 @@ is `force-dynamic` specifically to keep that true.
 | `SESSION_SECRET` *secret* | **production** | ≥32 chars. `openssl rand -base64 32`. Outside production an ephemeral one is generated per start, with a warning. |
 | `DISCORD_CLIENT_ID` | **production** | From the Discord developer portal. |
 | `DISCORD_CLIENT_SECRET` *secret* | **production** | Same. |
-| `DISCORD_REDIRECT_URIS` | **production** | Comma-separated. **Register the beta and production URIs together** so the domain move is a cutover, not a flag day. Each must be `<app origin>/auth/discord/callback` and registered identically in Discord. |
+| `DISCORD_REDIRECT_URIS` | **production** | Comma-separated. **Register the beta and production URIs together** so the domain move is a cutover, not a flag day. Each must be `<public origin>/auth/discord/callback` and registered identically in Discord. |
 
 Without Discord credentials the app still runs and every public page works —
 nobody can sign in. That is a legitimate read-only deployment.
@@ -73,6 +73,8 @@ nobody can sign in. That is a legitimate read-only deployment.
 
 | Variable | Required | Notes |
 |---|---|---|
+| `API_HOST` | optional | Interface the API binds to. Default `127.0.0.1`. Set `0.0.0.0` only where something else isolates it, such as a container network with an unpublished port. |
+| `API_PORT` | optional | Default `3001`. |
 | `DATABASE_PATH` | optional | Default `./data/pkviewer.db`. **Relative paths resolve against the API process's working directory**, which is `apps/api` under `bun run dev` — so the dev database is at `apps/api/data/pkviewer.db`. **Use an absolute path in production.** |
 
 ### Beta flags
@@ -89,9 +91,7 @@ nobody can sign in. That is a legitimate read-only deployment.
 
 ```
 NODE_ENV=production
-PUBLIC_APP_ORIGIN=https://app.example
-PUBLIC_USERCONTENT_ORIGIN=https://public.example
-PUBLIC_ASSET_ORIGIN=https://public.example
+PUBLIC_ORIGIN=https://system.example
 INTERNAL_API_ORIGIN=http://127.0.0.1:3001
 DATABASE_PATH=/var/lib/pkviewer/pkviewer.db
 PK_USER_AGENT_CONTACT=https://github.com/OWNER/pkviewer
@@ -99,7 +99,7 @@ PUBLIC_DOCS_URL=https://docs.example
 SESSION_SECRET=<openssl rand -base64 32>
 DISCORD_CLIENT_ID=<from Discord>
 DISCORD_CLIENT_SECRET=<from Discord>
-DISCORD_REDIRECT_URIS=https://app.example/auth/discord/callback
+DISCORD_REDIRECT_URIS=https://system.example/auth/discord/callback
 BETA_MODE=true
 SIGNUP_ENABLED=true
 BETA_ALLOWED_DISCORD_IDS=<your Discord user id>
@@ -147,6 +147,39 @@ Public pages would keep working for systems reachable by PluralKit ID; chosen
 addresses would stop resolving and would become claimable by anyone. Claiming
 would have to be redone. **Treat the database as the thing that actually needs
 backing up.**
+
+## Running with Docker
+
+```bash
+cp .env.example .env      # fill in the production values
+docker compose up -d --build
+```
+
+Two containers, mirroring the architecture: `api` owns SQLite and is the only
+writer; `web` renders and proxies. Configuration comes from `.env` at run time —
+nothing secret is baked into an image, and no origin is compiled in, so moving
+domains stays a config change.
+
+Three details in `docker-compose.yml` are deliberate:
+
+- **`api` has no `ports:`, only `expose:`.** Publishing 3001 would put the
+  management API straight onto the host network, reachable without going through
+  the web tier. It is addressable only as `http://api:3001` from inside.
+- **`web` publishes to `127.0.0.1:3000`, not `0.0.0.0:3000`.** Put a
+  TLS-terminating proxy in front; the container itself should not be the thing
+  facing the internet.
+- **The named volume `pkviewer-data` is the whole of pkviewer's state.** Back
+  that up; see below.
+
+Backups work the same way, run against the container:
+
+```bash
+docker compose exec api sh -c \
+  "bun -e 'new (require(\"bun:sqlite\").Database)(\"/data/pkviewer.db\").exec(\"VACUUM INTO \\\"/data/backup.db\\\"\")'"
+```
+
+or more simply, stop the stack and copy the volume. Never `cp` a live WAL
+database.
 
 ## Deploying a change
 

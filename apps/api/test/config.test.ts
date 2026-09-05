@@ -6,9 +6,7 @@ import { PKVIEWER_VERSION } from "../src/config/version.ts";
 
 const base = {
   NODE_ENV: "development",
-  PUBLIC_APP_ORIGIN: "http://localhost:3000",
-  PUBLIC_USERCONTENT_ORIGIN: "http://localhost:3002",
-  PUBLIC_ASSET_ORIGIN: "http://localhost:3002",
+  PUBLIC_ORIGIN: "http://localhost:3000",
   INTERNAL_API_ORIGIN: "http://127.0.0.1:3001",
   PK_USER_AGENT_CONTACT: "https://github.com/owner/pkviewer",
 };
@@ -16,29 +14,48 @@ const base = {
 describe("config", () => {
   test("parses a valid development environment", () => {
     const cfg = loadConfig(base);
-    expect(cfg.appOrigin).toBe("http://localhost:3000");
+    expect(cfg.publicOrigin).toBe("http://localhost:3000");
     expect(cfg.beta.enabled).toBe(false);
     expect(cfg.pk.readRps).toBe(6);
   });
 
   test("normalises origins by stripping trailing slashes", () => {
-    const cfg = loadConfig({ ...base, PUBLIC_APP_ORIGIN: "http://localhost:3000/" });
-    expect(cfg.appOrigin).toBe("http://localhost:3000");
+    const cfg = loadConfig({ ...base, PUBLIC_ORIGIN: "http://localhost:3000/" });
+    expect(cfg.publicOrigin).toBe("http://localhost:3000");
   });
 
   test("rejects an origin carrying a path", () => {
-    expect(() => loadConfig({ ...base, PUBLIC_APP_ORIGIN: "http://localhost:3000/app" })).toThrow(
+    expect(() => loadConfig({ ...base, PUBLIC_ORIGIN: "http://localhost:3000/app" })).toThrow(
       ConfigError,
     );
   });
 
-  // The user-content origin is the boundary keeping user-authored presentation
-  // away from __Host- session cookies. Collapsing it into the app origin would
-  // void that silently, so it must be fatal everywhere including development.
-  test("refuses to boot when user content shares the app origin", () => {
-    expect(() =>
-      loadConfig({ ...base, PUBLIC_USERCONTENT_ORIGIN: "http://localhost:3000" }),
-    ).toThrow(/must not equal PUBLIC_APP_ORIGIN/);
+  // pkviewer used to run on two user-facing origins. A configuration still
+  // carrying the old names would otherwise fail with a confusing "PUBLIC_ORIGIN
+  // is required", so the error names the change instead.
+  test("a configuration using the old two-origin names says what to do", () => {
+    const { PUBLIC_ORIGIN: _replaced, ...withoutNew } = base;
+    for (const stale of ["PUBLIC_APP_ORIGIN", "PUBLIC_USERCONTENT_ORIGIN"]) {
+      expect(() => loadConfig({ ...withoutNew, [stale]: "http://localhost:3000" })).toThrow(
+        /PUBLIC_ORIGIN/,
+      );
+    }
+  });
+
+  test("the old names are ignored once PUBLIC_ORIGIN is set", () => {
+    const cfg = loadConfig({
+      ...base,
+      PUBLIC_APP_ORIGIN: "http://stale.example",
+      PUBLIC_USERCONTENT_ORIGIN: "http://also-stale.example",
+    });
+    expect(cfg.publicOrigin).toBe("http://localhost:3000");
+  });
+
+  test("the asset origin falls back to the public origin", () => {
+    expect(loadConfig(base).assetOrigin).toBe("http://localhost:3000");
+    expect(loadConfig({ ...base, PUBLIC_ASSET_ORIGIN: "https://media.example" }).assetOrigin).toBe(
+      "https://media.example",
+    );
   });
 
   test("requires https origins in production", () => {
@@ -56,12 +73,12 @@ describe("config", () => {
     expect(() =>
       loadConfig({
         NODE_ENV: "production",
-        PUBLIC_APP_ORIGIN: "https://app.example",
-        PUBLIC_USERCONTENT_ORIGIN: "https://usercontent.example",
-        PUBLIC_ASSET_ORIGIN: "https://usercontent.example",
+        PUBLIC_ORIGIN: "https://system.example",
         INTERNAL_API_ORIGIN: "http://127.0.0.1:3001",
         PK_USER_AGENT_CONTACT: "https://github.com/owner/pkviewer",
-        DISCORD_REDIRECT_URIS: "https://app.example/cb",
+        DISCORD_REDIRECT_URIS: "https://system.example/auth/discord/callback",
+        DISCORD_CLIENT_ID: "id",
+        DISCORD_CLIENT_SECRET: "secret",
         SESSION_SECRET: "short",
       }),
     ).toThrow(/SESSION_SECRET/);
@@ -92,8 +109,8 @@ describe("user agent", () => {
   // the deployment origin would change it on the beta -> production move, which
   // is the thing PluralKit uses it to avoid.
   test("does not depend on the deployment origin", () => {
-    const a = loadConfig({ ...base, PUBLIC_APP_ORIGIN: "https://beta.example" });
-    const b = loadConfig({ ...base, PUBLIC_APP_ORIGIN: "https://production.example" });
+    const a = loadConfig({ ...base, PUBLIC_ORIGIN: "https://beta.example" });
+    const b = loadConfig({ ...base, PUBLIC_ORIGIN: "https://production.example" });
     expect(a.pk.userAgent).toBe(b.pk.userAgent);
   });
 });
@@ -114,9 +131,7 @@ describe("beta readiness", () => {
 
   const prodBase = {
     NODE_ENV: "production",
-    PUBLIC_APP_ORIGIN: "https://app.example",
-    PUBLIC_USERCONTENT_ORIGIN: "https://public.example",
-    PUBLIC_ASSET_ORIGIN: "https://public.example",
+    PUBLIC_ORIGIN: "https://app.example",
     INTERNAL_API_ORIGIN: "http://127.0.0.1:3001",
     PK_USER_AGENT_CONTACT: "https://github.com/owner/pkviewer",
     DISCORD_REDIRECT_URIS: "https://app.example/auth/discord/callback",
@@ -181,5 +196,34 @@ describe("the example environment file", () => {
       .filter((segment) => segment.length > 0 && segment === segment.toUpperCase());
     expect(placeholders).toEqual([]);
     expect(url.pathname).not.toBe("/");
+  });
+});
+
+describe("optional origins", () => {
+  // A .env listing a key with nothing after it means "not set", not "set to an
+  // empty string" — which would otherwise fail origin parsing at startup.
+  test("an empty optional origin counts as absent", () => {
+    expect(loadConfig({ ...base, PUBLIC_ASSET_ORIGIN: "" }).assetOrigin).toBe(base.PUBLIC_ORIGIN);
+    expect(loadConfig({ ...base, PUBLIC_ASSET_ORIGIN: "   " }).assetOrigin).toBe(base.PUBLIC_ORIGIN);
+  });
+
+  test("a malformed optional origin is still rejected", () => {
+    expect(() => loadConfig({ ...base, PUBLIC_ASSET_ORIGIN: "not-a-url" })).toThrow(ConfigError);
+  });
+});
+
+describe("the API's network exposure", () => {
+  /**
+   * The API is internal: the browser never calls it and the web tier proxies
+   * everything. Binding every interface would put the management API straight
+   * on the network, reachable without going through the web tier at all — which
+   * is what the architecture explicitly forbids.
+   */
+  test("binds loopback unless told otherwise", () => {
+    expect(loadConfig(base).apiHost).toBe("127.0.0.1");
+  });
+
+  test("can be opened up deliberately, for containers", () => {
+    expect(loadConfig({ ...base, API_HOST: "0.0.0.0" }).apiHost).toBe("0.0.0.0");
   });
 });

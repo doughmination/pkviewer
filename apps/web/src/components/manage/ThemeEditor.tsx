@@ -2,12 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useUnsavedGuard } from "./useUnsavedGuard.ts";
-import {
-  ArrowCounterclockwise,
-  Check2,
-  ExclamationTriangle,
-  PencilSquare,
-} from "react-bootstrap-icons";
+import { ArrowCounterclockwise, PencilSquare } from "react-bootstrap-icons";
 import {
   FONTS,
   FONT_IDS,
@@ -17,6 +12,8 @@ import {
   themeToCssVars,
   type TokenDef,
 } from "@pkviewer/shared";
+import { SaveBar, type SaveState } from "./SaveBar.tsx";
+import { Section } from "./Shell.tsx";
 import { ThemePreview } from "./ThemePreview.tsx";
 
 /**
@@ -38,21 +35,29 @@ type Level = "system" | "member";
 const GROUPS: Array<{ title: string; hint: string; keys: string[] }> = [
   {
     title: "Colours",
-    hint: "The palette everything is drawn from.",
+    hint: "The palette your pages are drawn from. Every other setting uses these.",
     keys: ["color.page", "color.surface", "color.text", "color.muted", "color.accent", "color.border"],
   },
   {
     title: "Typography",
-    hint: "Typefaces and reading size.",
+    hint: "The typefaces and reading size your pages use.",
     keys: ["font.body", "font.heading", "font.size"],
   },
   {
     title: "Shape and surfaces",
-    hint: "How cards and edges are drawn.",
+    hint: "How cards, edges and avatars are drawn.",
     keys: ["shape.radius", "surface.style", "avatar.shape"],
   },
-  { title: "Feel", hint: "How much room everything is given.", keys: ["density"] },
-  { title: "Display", hint: "Light or dark.", keys: ["color.scheme"] },
+  {
+    title: "Spacing",
+    hint: "How much room everything is given.",
+    keys: ["density"],
+  },
+  {
+    title: "Light and dark",
+    hint: "Follow the reader's device, or commit to one.",
+    keys: ["color.scheme"],
+  },
 ];
 
 export type ThemeEditorProps = {
@@ -77,6 +82,7 @@ export function ThemeEditor({
   const [saved, setSaved] = useState<Record<string, string | null>>(initialValues);
   const [status, setStatus] = useState<"idle" | "saving" | "ok" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [presetNote, setPresetNote] = useState<string | null>(null);
 
   const dirty = useMemo(
     () => JSON.stringify(values) !== JSON.stringify(saved),
@@ -139,7 +145,7 @@ export function ThemeEditor({
     }
     setValues(next);
     setStatus("idle");
-    setMessage(`${preset.name} applied. Review and save.`);
+    setPresetNote(`${preset.name} applied — review it below, then save.`);
   }
 
   async function save() {
@@ -149,22 +155,31 @@ export function ThemeEditor({
     if (result.ok) {
       setSaved(values);
       setStatus("ok");
-      setMessage("Saved.");
+      setMessage(null);
+      setPresetNote(null);
     } else {
       setStatus("error");
-      setMessage(result.error ?? "Could not save. Please try again.");
+      setMessage(result.error ?? null);
     }
   }
 
+  const saveState: SaveState =
+    status === "saving" ? "saving"
+    : status === "error" ? "error"
+    : dirty ? "dirty"
+    : status === "ok" ? "saved"
+    : "clean";
+
   return (
     <>
-      <div className="mg-panel">
-        <h2>Start from a preset</h2>
-        <p className="hint">
-          {level === "system"
+      <Section
+        title="Start from a preset"
+        description={
+          level === "system"
             ? "A preset fills in every setting below. You can change anything afterwards."
-            : "Applying a preset here sets these values for this member only. It does not change the system."}
-        </p>
+            : "Applying a preset here sets these values for this member only. It does not change the system."
+        }
+      >
         <div className="mg-presets">
           {PRESETS.map((preset) => (
             <button
@@ -187,28 +202,30 @@ export function ThemeEditor({
             </button>
           ))}
         </div>
-      </div>
+        {presetNote ? (
+          <p className="mg-note" role="status" style={{ marginTop: "var(--mg-3)" }}>
+            <span>{presetNote}</span>
+          </p>
+        ) : null}
+      </Section>
 
-      <div className="mg-panel">
-        <h2>Preview</h2>
-        <p className="hint">
-          A representative sample. Open the public page to see the real thing.
-        </p>
+      <Section
+        title="Preview"
+        description="A representative sample. Open the public page to see the real thing."
+      >
         <ThemePreview
           vars={preview.vars}
           darkVars={preview.darkVars}
           scheme={preview.scheme}
           name={previewName}
         />
-      </div>
+      </Section>
 
       {GROUPS.map((group) => {
         const keys = group.keys.filter((k) => editableKeys.has(k));
         if (keys.length === 0) return null;
         return (
-          <section className="mg-panel" key={group.title}>
-            <h2>{group.title}</h2>
-            <p className="hint">{group.hint}</p>
+          <Section title={group.title} description={group.hint} key={group.title}>
             <div className="mg-grid">
               {keys.map((key) => {
                 const def = THEME_TOKENS.find((t) => t.key === key);
@@ -228,43 +245,22 @@ export function ThemeEditor({
                 );
               })}
             </div>
-          </section>
+          </Section>
         );
       })}
 
-      <div className="mg-savebar">
-        <span
-          className="mg-status"
-          data-tone={status === "ok" ? "ok" : status === "error" ? "error" : dirty ? "dirty" : undefined}
-          role="status"
-          aria-live="polite"
-        >
-          {status === "error" ? <ExclamationTriangle aria-hidden="true" /> : null}
-          {status === "ok" ? <Check2 aria-hidden="true" /> : null}
-          {message ?? (dirty ? "Unsaved changes" : "No changes")}
-        </span>
-        <span className="spacer" />
-        <button
-          type="button"
-          className="ghost"
-          onClick={() => {
-            setValues(saved);
-            setStatus("idle");
-            setMessage(null);
-          }}
-          disabled={!dirty || status === "saving"}
-        >
-          Discard changes
-        </button>
-        <button
-          type="button"
-          className="primary"
-          onClick={save}
-          disabled={!dirty || status === "saving"}
-        >
-          {status === "saving" ? "Saving…" : "Save appearance"}
-        </button>
-      </div>
+      <SaveBar
+        state={saveState}
+        message={message}
+        saveLabel="Save appearance"
+        onSave={save}
+        onDiscard={() => {
+          setValues(saved);
+          setStatus("idle");
+          setMessage(null);
+          setPresetNote(null);
+        }}
+      />
     </>
   );
 }

@@ -145,8 +145,8 @@ export class DiscordClient {
  */
 export function pickRedirectUri(
   redirectUris: readonly string[],
-  appOrigin: string,
+  publicOrigin: string,
 ): string | null {
-  const preferred = redirectUris.find((uri) => uri.startsWith(`${appOrigin}/`));
+  const preferred = redirectUris.find((uri) => uri.startsWith(`${publicOrigin}/`));
   return preferred ?? redirectUris[0] ?? null;
 }

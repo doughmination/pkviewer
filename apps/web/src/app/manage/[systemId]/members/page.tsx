@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { ExclamationTriangle, PersonCircle } from "react-bootstrap-icons";
+import { ChevronRight, ExclamationTriangle, InfoCircle, PersonCircle } from "react-bootstrap-icons";
+import { Note, PageHeader, Section } from "@/components/manage/Shell.tsx";
 import { manageApi, type ManagedMemberSummary } from "@/lib/manage-api.ts";
 
 export const metadata: Metadata = { title: "Members" };
@@ -28,56 +29,83 @@ export default async function MembersPage({
 
   return (
     <>
-      <p className="mg-note">
+      <PageHeader
+        title="Members"
+        description="Give any member's page its own look, address and links. Everything starts out following your system."
+      />
+
+      <Note icon={<InfoCircle aria-hidden="true" />}>
         These are the members PluralKit lists publicly. Anything you keep private
         in PluralKit stays private and does not appear here.
-      </p>
+      </Note>
 
       {!reachable ? (
-        <p className="mg-note" data-tone="warn" role="status">
-          <ExclamationTriangle aria-hidden="true" />
+        <Note icon={<ExclamationTriangle aria-hidden="true" />} tone="warn" role="status">
           PluralKit could not be reached, so the member list is unavailable right
           now. Try again shortly.
-        </p>
+        </Note>
       ) : members.length === 0 ? (
-        <section className="mg-panel">
-          <h2>No public members</h2>
-          <p className="hint">
-            This system has no publicly listed members, so its page shows no
-            directory.
-          </p>
-        </section>
+        <Section
+          title="No public members"
+          description="This system has no publicly listed members, so its page shows no directory."
+        >
+          <div />
+        </Section>
       ) : (
-        <section className="mg-panel">
-          <h2>{members.length} public {members.length === 1 ? "member" : "members"}</h2>
-          <p className="hint">Choose a member to give their page its own look.</p>
+        <Section
+          title={`${members.length} public ${members.length === 1 ? "member" : "members"}`}
+          description="Choose a member to edit their page."
+        >
           <ul className="mg-list">
             {members.map((member) => (
               <li key={member.pkMemberUuid}>
-                <a className="mg-card" href={`/manage/${systemId}/members/${member.pkMemberHid}`}>
-                  {member.avatarUrl ? (
-                    <img className="mg-thumb" src={member.avatarUrl} alt="" />
-                  ) : (
-                    <PersonCircle className="mg-thumb" aria-hidden="true" />
-                  )}
-                  <span className="grow">
-                    <span className="title">
-                      {member.displayName ?? member.name ?? member.pkMemberHid}
-                    </span>
-                    <span className="sub">
-                      {member.pronouns ? `${member.pronouns} · ` : ""}
-                      {member.slug ?? member.pkMemberHid}
-                    </span>
-                  </span>
-                  <span className="mg-tag" data-tone={member.hasThemeOverrides ? "ok" : undefined}>
-                    {member.hasThemeOverrides ? "Custom look" : "System appearance"}
-                  </span>
-                </a>
+                <MemberRow systemId={systemId} member={member} />
               </li>
             ))}
           </ul>
-        </section>
+        </Section>
       )}
     </>
+  );
+}
+
+/**
+ * One member.
+ *
+ * The name and its details are separate block-level elements in a flex column,
+ * and the details are individual elements separated by a CSS gap and generated
+ * separator. Nothing here relies on whitespace in the markup to create spacing —
+ * two inline spans with no layout ran together as "CherryXe/Xem · cherry".
+ */
+function MemberRow({
+  systemId,
+  member,
+}: {
+  systemId: string;
+  member: ManagedMemberSummary;
+}) {
+  const name = member.displayName ?? member.name ?? member.pkMemberHid;
+
+  return (
+    <a className="mg-item" href={`/manage/${systemId}/members/${member.pkMemberHid}`}>
+      {member.avatarUrl ? (
+        <img className="mg-thumb mg-thumb--round" src={member.avatarUrl} alt="" loading="lazy" />
+      ) : (
+        <PersonCircle className="mg-thumb mg-thumb--round" aria-hidden="true" />
+      )}
+
+      <span className="mg-identity">
+        <span className="name">{name}</span>
+        <span className="meta">
+          {member.pronouns ? <span>{member.pronouns}</span> : null}
+          <code>{member.slug ?? member.pkMemberHid}</code>
+        </span>
+      </span>
+
+      <span className="mg-tag" data-tone={member.hasThemeOverrides ? "accent" : undefined}>
+        {member.hasThemeOverrides ? "Custom" : "Inherits"}
+      </span>
+      <ChevronRight aria-hidden="true" className="mg-chevron" />
+    </a>
   );
 }

@@ -116,18 +116,18 @@ db.query(
 );
 db.close();
 
-const appOrigin = process.env["PUBLIC_APP_ORIGIN"] ?? "http://app.localhost:3000";
+const siteOrigin = process.env["PUBLIC_ORIGIN"] ?? "http://system.localhost:3000";
 
 console.log(
   [
     "",
     `  Seeded ${pkSystem.name ?? pkSystem.id} (${pkSystem.id}) as a claimed system.`,
     "",
-    "  Set this cookie on the app origin, then open /manage:",
+    "  Set this cookie on the site origin, then open /manage:",
     "",
     `    document.cookie = "__Host-pkv_session=${token}; path=/; secure"`,
     "",
-    `  ${appOrigin}/manage`,
+    `  ${siteOrigin}/manage`,
     "",
     "  Development data only. Delete the database file to start over.",
     "",

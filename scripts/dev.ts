@@ -97,15 +97,13 @@ for (const tier of TIERS) {
   prefix(tier.name, tier.colour, child.stderr as ReadableStream<Uint8Array>);
 }
 
-const appOrigin = process.env["PUBLIC_APP_ORIGIN"] ?? "http://app.localhost:3000";
-const publicOrigin = process.env["PUBLIC_USERCONTENT_ORIGIN"] ?? "http://system.localhost:3000";
+const publicOrigin = process.env["PUBLIC_ORIGIN"] ?? "http://system.localhost:3000";
 
 console.log("");
 console.log("  pkviewer dev");
-console.log(`  public   ${publicOrigin}          / , /docs , /s/...`);
-console.log(`  app      ${appOrigin}             /login , /manage`);
+console.log(`  site     ${publicOrigin}   / , /login , /manage , /s/...`);
 console.log(`  api      ${process.env["INTERNAL_API_ORIGIN"] ?? "http://127.0.0.1:3001"}/health`);
 console.log("");
-console.log("  Both hostnames hit the same Next process; *.localhost resolves");
-console.log("  to 127.0.0.1 in Chrome and Firefox with no setup.");
+console.log("  system.localhost resolves to 127.0.0.1 in Chrome and Firefox with no setup.");
+
 console.log("");

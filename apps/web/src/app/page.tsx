@@ -62,7 +62,7 @@ export default function LandingPage() {
       </section>
 
       <p>
-        <a href={`${webConfig.appOrigin}/login`}>
+        <a href="/login">
           Sign in with Discord <ArrowRight aria-hidden="true" />
         </a>
       </p>

@@ -78,16 +78,17 @@ app.get("/health", (c) =>
     // Echoed so a deploy can be checked for the domain-portability rules without
     // shell access. Never includes secrets.
     origins: {
-      app: cfg.appOrigin,
-      userContent: cfg.userContentOrigin,
+      public: cfg.publicOrigin,
       asset: cfg.assetOrigin,
     },
     pkUserAgent: cfg.pk.userAgent,
   }),
 );
 
-console.log(`[api] pkviewer ${PKVIEWER_VERSION} on :${cfg.apiPort} (beta=${cfg.beta.enabled})`);
+console.log(
+  `[api] pkviewer ${PKVIEWER_VERSION} on ${cfg.apiHost}:${cfg.apiPort} (beta=${cfg.beta.enabled})`,
+);
 console.log(`[api] pk user-agent: ${cfg.pk.userAgent}`);
 
-export default { port: cfg.apiPort, fetch: app.fetch };
+export default { port: cfg.apiPort, hostname: cfg.apiHost, fetch: app.fetch };
 export { app, db, pk, cfg };

@@ -14,10 +14,10 @@ export async function POST() {
 
   await fetch(`${webConfig.apiOrigin}/auth/logout`, {
     method: "POST",
-    headers: { cookie: cookieHeader, origin: webConfig.appOrigin },
+    headers: { cookie: cookieHeader, origin: webConfig.publicOrigin },
   }).catch(() => undefined);
 
-  const response = NextResponse.redirect(`${webConfig.appOrigin}/login`, 303);
+  const response = NextResponse.redirect(`${webConfig.publicOrigin}/login`, 303);
   response.cookies.set("__Host-pkv_session", "", {
     path: "/",
     maxAge: 0,

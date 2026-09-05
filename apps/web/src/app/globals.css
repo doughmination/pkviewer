@@ -214,32 +214,66 @@ code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.88em
 }
 
 /* ==========================================================================
-   Application UI — /login and /manage. Scoped under .mg so it cannot touch
-   public pages, and so a user's theme cannot touch it.
+   Application UI — /login and /manage.
+   ==========================================================================
+
+   Scoped under `.mg` so it cannot touch public pages, and so a system's own
+   theme can never touch it: the control plane must stay readable and navigable
+   whatever colours somebody picks for their public page.
+
+   It borrows the product's palette — the same rose-plum accent and warm
+   near-black the platform default uses — so the two halves read as one product
+   without the app inheriting anything user-controlled. Page titles use the
+   product's heading face; everything operational stays in the system stack,
+   which is faster and more familiar for forms.
+
+   The vocabulary below is deliberately small. Prefer composing these primitives
+   over adding page-specific CSS.
    ========================================================================== */
 
 .mg {
-  --mg-bg: #F7F7F9;
+  /* Near-neutral greys with only a trace of warmth. The accent is the one
+   * colour in this interface; text and surfaces stay out of its way. An earlier
+   * palette carried a strong violet cast and every line of description read as
+   * tinted rather than quiet. */
+  --mg-bg: #F7F6F9;
   --mg-panel: #FFFFFF;
-  --mg-ink: #1A1A1F;
-  --mg-ink-soft: #4C4C57;
-  --mg-muted: #6E6E7B;
-  --mg-line: #E2E2E8;
-  --mg-line-strong: #C9C9D3;
-  --mg-accent: #4A3AB5;
-  --mg-accent-soft: #EEEBFA;
+  --mg-panel-sunken: #FAFAFC;
+  --mg-ink: #1B1A1F;
+  --mg-ink-soft: #48464F;
+  --mg-muted: #66626E;
+  --mg-line: #E5E3EA;
+  --mg-line-strong: #CBC8D2;
+  --mg-accent: #A23B72;
+  --mg-accent-hover: #8C2F61;
+  --mg-accent-soft: #FBEFF5;
   --mg-danger: #B3261E;
+  --mg-danger-soft: #FDEDEC;
   --mg-ok: #1F7A4D;
   --mg-warn: #8A5B00;
-  --mg-radius: 8px;
-  --mg-shadow: 0 1px 2px rgba(20, 20, 30, 0.06), 0 6px 20px -14px rgba(20, 20, 30, 0.25);
+
+  --mg-radius: 10px;
+  --mg-radius-sm: 7px;
+  --mg-shadow: 0 1px 2px rgba(28, 23, 33, 0.05);
+
+  --mg-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --mg-font-title: "Newsreader", Georgia, "Iowan Old Style", serif;
+
+  /* One spacing scale. Every gap below comes from it. */
+  --mg-1: 4px;
+  --mg-2: 8px;
+  --mg-3: 12px;
+  --mg-4: 16px;
+  --mg-5: 24px;
+  --mg-6: 32px;
+  --mg-7: 48px;
 
   color-scheme: light;
   background: var(--mg-bg);
   color: var(--mg-ink);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--mg-font);
   font-size: 15px;
-  line-height: 1.5;
+  line-height: 1.55;
   min-height: 100vh;
 }
 
@@ -247,231 +281,516 @@ code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.88em
   .mg {
     --mg-bg: #131317;
     --mg-panel: #1B1B21;
-    --mg-ink: #ECECF1;
-    --mg-ink-soft: #C3C3CE;
-    --mg-muted: #9494A2;
-    --mg-line: #2C2C35;
-    --mg-line-strong: #3D3D49;
-    --mg-accent: #A99BFF;
-    --mg-accent-soft: #232035;
-    --mg-danger: #FF8A80;
+    --mg-panel-sunken: #17171C;
+    --mg-ink: #ECEBEF;
+    --mg-ink-soft: #C2C0C8;
+    --mg-muted: #93919C;
+    --mg-line: #2C2B33;
+    --mg-line-strong: #45434E;
+    --mg-accent: #F58FC2;
+    --mg-accent-hover: #FFA9D2;
+    --mg-accent-soft: #2A1D24;
+    --mg-danger: #FF8F84;
+    --mg-danger-soft: #2C1A1A;
     --mg-ok: #6FD3A0;
     --mg-warn: #E3B341;
+    --mg-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
     color-scheme: dark;
   }
 }
 
-.mg * { box-sizing: border-box; }
-.mg a { color: var(--mg-accent); }
-.mg :focus-visible { outline: 2px solid var(--mg-accent); outline-offset: 2px; border-radius: 4px; }
+.mg *, .mg *::before, .mg *::after { box-sizing: border-box; }
+
+/* `:where()` contributes no specificity, so this is the DEFAULT link colour
+ * rather than a rule every component then has to fight. Written as `.mg a` it
+ * would score (0,1,1) and beat every single-class rule below — the nav, the
+ * brand, the back link and every list row would all come out accent-coloured. */
+.mg :where(a) { color: var(--mg-accent); text-underline-offset: 2px; }
+
+/* One focus treatment everywhere, strong enough to find at a glance. */
+.mg :focus-visible {
+  outline: 2px solid var(--mg-accent);
+  outline-offset: 2px;
+  border-radius: var(--mg-radius-sm);
+}
+
+.mg h1, .mg h2, .mg h3 { margin: 0; }
 
 /* ------------------------------------------------------------------ chrome */
 
 .mg-bar {
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 16px;
+  display: flex; align-items: center; gap: var(--mg-3);
+  padding: var(--mg-3) var(--mg-4);
   background: var(--mg-panel);
   border-bottom: 1px solid var(--mg-line);
   position: sticky; top: 0; z-index: 30;
   flex-wrap: wrap;
 }
-.mg-brand { font-weight: 650; letter-spacing: -0.01em; text-decoration: none; color: var(--mg-ink); }
+.mg-brand {
+  font-family: var(--mg-font-title);
+  font-size: 17px; font-weight: 600; letter-spacing: -0.01em;
+  text-decoration: none; color: var(--mg-ink);
+}
+.mg-bar-note {
+  font-size: 12px; color: var(--mg-muted);
+  border-left: 1px solid var(--mg-line); padding-left: var(--mg-3);
+}
 .mg-bar .spacer { flex: 1; }
-.mg-bar-note { font-size: 12.5px; color: var(--mg-muted); }
 
-.mg-shell { max-width: 1100px; margin: 0 auto; padding: 20px 16px 64px; }
+.mg-shell { max-width: 68rem; margin: 0 auto; padding: var(--mg-5) var(--mg-4) var(--mg-7); }
+.mg-shell--narrow { max-width: 46rem; }
 
-.mg-layout { display: grid; grid-template-columns: 1fr; gap: 20px; }
+/* Vertical rhythm for stacked blocks.
+ *
+ * ONE rule, applied to whatever a page stacks, rather than a margin per pair of
+ * neighbours. The pairwise approach only spaced the combinations it happened to
+ * name: a save bar followed by the next section had no rule at all and the two
+ * sat flush against each other.
+ *
+ * Components therefore carry no outer margin of their own — spacing belongs to
+ * the container, so any two blocks are separated no matter what they are. */
+.mg-shell > * + *,
+.mg-column > * + * { margin-top: var(--mg-4); }
+
+/* A page header stands a little further from the content it introduces. */
+.mg-shell > .mg-pagehead + *,
+.mg-column > .mg-pagehead + * { margin-top: var(--mg-5); }
+
+/* Consecutive notes read as one group, so they sit closer together. */
+.mg-shell > .mg-note + .mg-note,
+.mg-column > .mg-note + .mg-note { margin-top: var(--mg-2); }
+
+.mg-layout { display: grid; grid-template-columns: 1fr; gap: var(--mg-5); }
 @media (min-width: 900px) {
-  .mg-layout { grid-template-columns: 210px minmax(0, 1fr); gap: 28px; align-items: start; }
+  .mg-layout { grid-template-columns: 216px minmax(0, 1fr); gap: var(--mg-6); align-items: start; }
 }
 
-/* On narrow screens the section nav becomes a horizontal scroller rather than a
- * squeezed sidebar: shrinking a sidebar until it is unusable is worse than
- * changing its shape. */
-.mg-nav { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 4px; }
+/* Section nav. A column on wide screens, a horizontal rail on narrow ones —
+ * shrinking a sidebar until it is unusable is worse than changing its shape. */
+.mg-nav {
+  display: flex; gap: var(--mg-1);
+  overflow-x: auto; padding-bottom: var(--mg-1);
+  scrollbar-width: thin;
+}
 .mg-nav a {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 12px; border-radius: var(--mg-radius);
+  display: flex; align-items: center; gap: var(--mg-2);
+  padding: var(--mg-2) var(--mg-3);
+  border-radius: var(--mg-radius-sm);
   text-decoration: none; color: var(--mg-ink-soft);
   white-space: nowrap; font-size: 14px;
+  border: 1px solid transparent;
 }
-.mg-nav a:hover { background: var(--mg-panel); }
-.mg-nav a[aria-current="page"] { background: var(--mg-accent-soft); color: var(--mg-accent); font-weight: 600; }
+.mg-nav a:hover { background: var(--mg-panel); color: var(--mg-ink); }
+.mg-nav a svg { color: var(--mg-muted); flex: none; }
+/* Current page carries weight and a rule as well as colour. */
+.mg-nav a[aria-current="page"] {
+  background: var(--mg-accent-soft);
+  color: var(--mg-accent);
+  font-weight: 600;
+  border-color: color-mix(in srgb, var(--mg-accent) 25%, transparent);
+}
+.mg-nav a[aria-current="page"] svg { color: inherit; }
 @media (min-width: 900px) {
-  .mg-nav { flex-direction: column; overflow: visible; position: sticky; top: 68px; }
+  .mg-nav { flex-direction: column; overflow: visible; position: sticky; top: 72px; }
 }
 
-/* ------------------------------------------------------------------ panels */
+/* ------------------------------------------------------------- page header */
 
+.mg-pagehead {
+  display: flex; align-items: flex-start; gap: var(--mg-4);
+  flex-wrap: wrap;
+}
+.mg-pagehead .grow { flex: 1 1 18rem; min-width: 0; }
+.mg-pagehead h1 {
+  font-family: var(--mg-font-title);
+  font-size: 26px; font-weight: 600; letter-spacing: -0.015em;
+  line-height: 1.2; text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+.mg-pagehead p { margin: var(--mg-2) 0 0; color: var(--mg-muted); font-size: 14px; max-width: 60ch; }
+.mg-pagehead .mg-actions { flex: none; }
+
+.mg-actions { display: flex; gap: var(--mg-2); flex-wrap: wrap; align-items: center; }
+
+/* Breadcrumb: a quiet way back, not a navigation system. */
+.mg-back {
+  display: inline-flex; align-items: center; gap: var(--mg-2);
+  font-size: 13.5px; text-decoration: none; color: var(--mg-muted);
+  margin-bottom: var(--mg-3);
+}
+.mg-back:hover { color: var(--mg-accent); }
+
+/* --------------------------------------------------------------- sections */
+
+.mg-section {
+  background: var(--mg-panel);
+  border: 1px solid var(--mg-line);
+  border-radius: var(--mg-radius);
+  box-shadow: var(--mg-shadow);
+  padding: var(--mg-5);
+}
+
+.mg-section-head { margin-bottom: var(--mg-4); }
+.mg-section-head h2 { font-size: 15.5px; font-weight: 650; letter-spacing: -0.005em; }
+.mg-section-head p { margin: var(--mg-1) 0 0; color: var(--mg-muted); font-size: 13.5px; max-width: 62ch; }
+.mg-section-head--bare { margin-bottom: 0; }
+
+/* Kept as an alias so existing markup keeps working while pages migrate. */
 .mg-panel {
   background: var(--mg-panel);
   border: 1px solid var(--mg-line);
   border-radius: var(--mg-radius);
-  padding: 18px;
   box-shadow: var(--mg-shadow);
+  padding: var(--mg-5);
 }
-.mg-panel + .mg-panel { margin-top: 16px; }
-.mg-panel h2 { font-size: 15px; margin: 0 0 4px; letter-spacing: -0.005em; }
-.mg-panel .hint { color: var(--mg-muted); font-size: 13px; margin: 0 0 14px; }
-
-.mg-head { margin-bottom: 18px; }
-.mg-head h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.015em; }
-.mg-head p { margin: 0; color: var(--mg-muted); font-size: 13.5px; }
+.mg-panel h2 { font-size: 15.5px; font-weight: 650; }
+.mg-panel .hint { color: var(--mg-muted); font-size: 13.5px; margin: var(--mg-1) 0 var(--mg-4); max-width: 62ch; }
 
 /* ------------------------------------------------------------------- forms */
 
-.mg-field { display: grid; gap: 6px; margin-bottom: 16px; }
-.mg-field:last-child { margin-bottom: 0; }
-.mg-field label { font-size: 13.5px; font-weight: 600; }
-.mg-field .desc { font-size: 12.5px; color: var(--mg-muted); }
+.mg-fields { display: grid; gap: var(--mg-4); }
+.mg-grid {
+  display: grid; gap: var(--mg-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+}
+
+.mg-field { display: grid; gap: var(--mg-2); align-content: start; }
+.mg-field > label, .mg-field-label { font-size: 13.5px; font-weight: 600; line-height: 1.3; }
+.mg-field .desc { font-size: 12.5px; color: var(--mg-muted); line-height: 1.45; }
 .mg-field .err { font-size: 12.5px; color: var(--mg-danger); font-weight: 500; }
+.mg-field-head { display: flex; align-items: center; gap: var(--mg-2); flex-wrap: wrap; }
+.mg-field-head .spacer { flex: 1; }
 
-.mg-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
-
-.mg input[type="text"], .mg input[type="url"], .mg select {
-  font: inherit;
-  padding: 8px 10px;
+.mg input[type="text"], .mg input[type="url"], .mg input[type="email"], .mg select, .mg textarea {
+  font: inherit; font-size: 14px;
+  padding: var(--mg-2) var(--mg-3);
   border: 1px solid var(--mg-line-strong);
-  border-radius: 6px;
+  border-radius: var(--mg-radius-sm);
   background: var(--mg-panel);
   color: var(--mg-ink);
-  width: 100%;
-  min-width: 0;
+  width: 100%; min-width: 0;
 }
+.mg select {
+  appearance: none;
+  padding-right: var(--mg-6);
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: right var(--mg-4) center, calc(100% - 11px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+.mg input:hover:not(:disabled), .mg select:hover:not(:disabled) { border-color: var(--mg-muted); }
 .mg input[aria-invalid="true"] { border-color: var(--mg-danger); }
+.mg input:disabled, .mg select:disabled { opacity: 0.6; cursor: not-allowed; background: var(--mg-panel-sunken); }
 
-.mg-colour { display: flex; align-items: center; gap: 8px; }
+.mg-colour { display: flex; align-items: center; gap: var(--mg-2); }
 .mg-colour input[type="color"] {
-  inline-size: 38px; block-size: 34px; padding: 2px;
-  border: 1px solid var(--mg-line-strong); border-radius: 6px;
-  background: var(--mg-panel); cursor: pointer; flex: none;
+  inline-size: 40px; block-size: 36px; padding: 3px; flex: none;
+  border: 1px solid var(--mg-line-strong); border-radius: var(--mg-radius-sm);
+  background: var(--mg-panel); cursor: pointer;
 }
-.mg-colour input[type="text"] { font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+.mg-colour input[type="text"] {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px; text-transform: uppercase;
+}
 
 /* -------------------------------------------------------------- inheritance */
 
-/* Inherited vs overridden is shown by a word and a border, never by colour
- * alone: state must survive both colour blindness and a greyscale print. */
+/* Inherited vs overridden is shown by a word AND a rule, never by colour alone:
+ * the state has to survive colour blindness and a greyscale screenshot. */
 .mg-inherit {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 11.5px; font-weight: 600;
-  padding: 2px 8px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: var(--mg-1);
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 2px var(--mg-2); border-radius: 999px;
   border: 1px solid var(--mg-line-strong);
-  color: var(--mg-muted);
-  background: transparent;
+  color: var(--mg-muted); background: transparent;
+  white-space: nowrap;
 }
 .mg-inherit[data-state="override"] {
-  border-color: var(--mg-accent);
+  border-color: color-mix(in srgb, var(--mg-accent) 40%, transparent);
   color: var(--mg-accent);
   background: var(--mg-accent-soft);
 }
 .mg-field[data-state="override"] {
   border-left: 3px solid var(--mg-accent);
-  padding-left: 12px;
-  margin-left: -15px;
+  padding-left: var(--mg-3);
+  margin-left: 0;
 }
-.mg-field-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.mg-field-head .spacer { flex: 1; }
 
 /* ----------------------------------------------------------------- buttons */
 
+/* Four weights, and they must look different at a glance:
+ *   primary   the one thing this screen is for
+ *   secondary a real alternative
+ *   quiet     available but not competing
+ *   danger    destructive, and never the default
+ */
 .mg button, .mg .btn {
-  font: inherit; font-size: 13.5px; font-weight: 500;
-  padding: 7px 13px; border-radius: 6px;
+  font: inherit; font-size: 13.5px; font-weight: 550;
+  padding: var(--mg-2) var(--mg-3);
+  border-radius: var(--mg-radius-sm);
   border: 1px solid var(--mg-line-strong);
   background: var(--mg-panel); color: var(--mg-ink);
   cursor: pointer; text-decoration: none;
-  display: inline-flex; align-items: center; gap: 7px;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--mg-2);
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
-.mg button:hover:not(:disabled), .mg .btn:hover { border-color: var(--mg-accent); color: var(--mg-accent); }
-.mg button:disabled { opacity: 0.55; cursor: not-allowed; }
-.mg button.primary {
-  background: var(--mg-accent); border-color: var(--mg-accent); color: #fff;
+.mg button:hover:not(:disabled), .mg .btn:hover { border-color: var(--mg-muted); background: var(--mg-panel-sunken); }
+
+/* A disabled control states that it is inactive rather than fading out.
+ * Halving the opacity of a filled accent button produced a muddy block that
+ * read as broken rather than unavailable. */
+.mg button:disabled {
+  cursor: not-allowed;
+  background: var(--mg-panel-sunken);
+  border-color: var(--mg-line);
+  color: var(--mg-muted);
 }
-.mg button.primary:hover:not(:disabled) { filter: brightness(1.08); color: #fff; }
-.mg button.ghost { border-color: transparent; background: transparent; color: var(--mg-muted); }
-.mg button.ghost:hover:not(:disabled) { background: var(--mg-bg); }
-.mg button.danger { color: var(--mg-danger); }
-.mg button.danger:hover:not(:disabled) { border-color: var(--mg-danger); }
-.mg button.icon { padding: 6px; }
+
+.mg button.primary:not(:disabled), .mg .btn.primary {
+  background: var(--mg-accent); border-color: var(--mg-accent); color: #fff; font-weight: 600;
+}
+.mg button.primary:disabled { font-weight: 600; }
+.mg button.primary:hover:not(:disabled), .mg .btn.primary:hover {
+  background: var(--mg-accent-hover); border-color: var(--mg-accent-hover); color: #fff;
+}
+
+.mg button.quiet, .mg .btn.quiet {
+  border-color: transparent; background: transparent; color: var(--mg-muted);
+}
+.mg button.quiet:hover:not(:disabled), .mg .btn.quiet:hover {
+  background: var(--mg-panel-sunken); color: var(--mg-ink); border-color: transparent;
+}
+/* Older markup used .ghost for the same role. */
+.mg button.ghost, .mg .btn.ghost { border-color: transparent; background: transparent; color: var(--mg-muted); }
+.mg button.ghost:hover:not(:disabled) { background: var(--mg-panel-sunken); color: var(--mg-ink); }
+
+.mg button.danger, .mg .btn.danger { color: var(--mg-danger); border-color: var(--mg-line-strong); }
+.mg button.danger:hover:not(:disabled) { border-color: var(--mg-danger); background: var(--mg-danger-soft); }
+
+.mg button.icon { padding: var(--mg-2); }
+.mg button svg, .mg .btn svg { flex: none; }
 
 /* ---------------------------------------------------------------- save bar */
 
 .mg-savebar {
   position: sticky; bottom: 0; z-index: 20;
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  margin-top: 18px; padding: 12px 16px;
+  display: flex; align-items: center; gap: var(--mg-3); flex-wrap: wrap;
+  padding: var(--mg-3) var(--mg-4);
   background: var(--mg-panel);
   border: 1px solid var(--mg-line);
   border-radius: var(--mg-radius);
-  box-shadow: var(--mg-shadow);
+  box-shadow: 0 -2px 12px -8px rgba(28, 23, 33, 0.35), var(--mg-shadow);
 }
 .mg-savebar .spacer { flex: 1; }
-.mg-status { font-size: 13px; display: inline-flex; align-items: center; gap: 7px; }
-.mg-status[data-tone="dirty"] { color: var(--mg-warn); }
-.mg-status[data-tone="ok"] { color: var(--mg-ok); }
-.mg-status[data-tone="error"] { color: var(--mg-danger); }
+/* Unsaved work is worth noticing, so the bar itself changes, not just a word. */
+.mg-savebar[data-state="dirty"] { border-color: color-mix(in srgb, var(--mg-warn) 45%, var(--mg-line)); }
+.mg-savebar[data-state="error"] { border-color: var(--mg-danger); }
+
+.mg-status {
+  font-size: 13px; display: inline-flex; align-items: center; gap: var(--mg-2);
+  color: var(--mg-muted); min-width: 0;
+}
+.mg-status[data-tone="dirty"] { color: var(--mg-warn); font-weight: 550; }
+.mg-status[data-tone="ok"] { color: var(--mg-ok); font-weight: 550; }
+.mg-status[data-tone="error"] { color: var(--mg-danger); font-weight: 550; }
+.mg-status svg { flex: none; }
 
 /* ------------------------------------------------------------------- lists */
 
-.mg-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
-.mg-card {
-  display: flex; align-items: center; gap: 12px;
-  padding: 12px 14px;
+.mg-list { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--mg-2); }
+
+.mg-item {
+  display: flex; align-items: center; gap: var(--mg-3);
+  padding: var(--mg-3);
   background: var(--mg-panel);
   border: 1px solid var(--mg-line);
   border-radius: var(--mg-radius);
   text-decoration: none; color: inherit;
   min-width: 0;
 }
-a.mg-card:hover { border-color: var(--mg-accent); }
-.mg-card .grow { flex: 1; min-width: 0; }
-.mg-card .title { font-weight: 600; overflow-wrap: anywhere; }
+a.mg-item { transition: border-color 120ms ease, background 120ms ease; }
+a.mg-item:hover { border-color: var(--mg-accent); background: var(--mg-accent-soft); }
+
+/* The identity block. A column with a real gap, so the name and its details are
+ * separated by layout rather than by whitespace in the markup. */
+.mg-identity { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mg-identity .name {
+  font-weight: 600; line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.mg-identity .meta {
+  display: flex; flex-wrap: wrap; align-items: baseline;
+  gap: 0 var(--mg-2);
+  font-size: 12.5px; color: var(--mg-muted); line-height: 1.4;
+  min-width: 0;
+}
+/* A middot between details, drawn by CSS so no text node carries spacing. */
+.mg-identity .meta > * + *::before {
+  content: "·";
+  margin-right: var(--mg-2);
+  color: var(--mg-line-strong);
+}
+.mg-identity .meta > * { overflow-wrap: anywhere; min-width: 0; }
+.mg-identity .meta code { font-size: 0.95em; }
+
+/* Older markup used .mg-card with .grow/.title/.sub. */
+.mg-card {
+  display: flex; align-items: center; gap: var(--mg-3);
+  padding: var(--mg-3);
+  background: var(--mg-panel);
+  border: 1px solid var(--mg-line);
+  border-radius: var(--mg-radius);
+  text-decoration: none; color: inherit; min-width: 0;
+}
+a.mg-card:hover { border-color: var(--mg-accent); background: var(--mg-accent-soft); }
+.mg-card .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mg-card .title { font-weight: 600; overflow-wrap: anywhere; line-height: 1.3; }
 .mg-card .sub { font-size: 12.5px; color: var(--mg-muted); overflow-wrap: anywhere; }
-.mg-thumb { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; border: 1px solid var(--mg-line); flex: none; }
+
+.mg-thumb {
+  width: 42px; height: 42px; flex: none;
+  border-radius: 9px; object-fit: cover;
+  border: 1px solid var(--mg-line);
+  background: var(--mg-panel-sunken);
+  color: var(--mg-muted);
+}
+.mg-thumb--round { border-radius: 50%; }
 
 .mg-tag {
-  font-size: 11.5px; font-weight: 600;
-  padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 3px var(--mg-2); border-radius: 999px;
   border: 1px solid var(--mg-line-strong); color: var(--mg-muted);
-  white-space: nowrap;
+  white-space: nowrap; flex: none;
 }
-.mg-tag[data-tone="ok"] { color: var(--mg-ok); border-color: currentColor; }
-.mg-tag[data-tone="warn"] { color: var(--mg-warn); border-color: currentColor; }
+.mg-tag[data-tone="ok"] { color: var(--mg-ok); border-color: color-mix(in srgb, var(--mg-ok) 40%, transparent); }
+.mg-tag[data-tone="warn"] { color: var(--mg-warn); border-color: color-mix(in srgb, var(--mg-warn) 45%, transparent); }
+.mg-tag[data-tone="accent"] { color: var(--mg-accent); border-color: color-mix(in srgb, var(--mg-accent) 40%, transparent); background: var(--mg-accent-soft); }
+
+/* ------------------------------------------------------------------- notes */
 
 .mg-note {
-  display: flex; gap: 10px; align-items: flex-start;
-  padding: 11px 14px; border-radius: var(--mg-radius);
+  display: flex; gap: var(--mg-3); align-items: flex-start;
+  padding: var(--mg-3) var(--mg-4);
+  border-radius: var(--mg-radius);
   border: 1px solid var(--mg-line-strong);
-  font-size: 13px; color: var(--mg-ink-soft);
+  background: var(--mg-panel-sunken);
+  font-size: 13.5px; color: var(--mg-ink-soft);
+  line-height: 1.5;
 }
-.mg-note svg { flex: none; margin-top: 2px; }
-.mg-note[data-tone="warn"] { border-color: var(--mg-warn); color: var(--mg-warn); }
+.mg-note svg { flex: none; margin-top: 2px; color: var(--mg-muted); }
+.mg-note[data-tone="warn"] { border-color: color-mix(in srgb, var(--mg-warn) 50%, transparent); color: var(--mg-warn); }
+.mg-note[data-tone="warn"] svg { color: inherit; }
+.mg-note[data-tone="accent"] { border-color: color-mix(in srgb, var(--mg-accent) 35%, transparent); background: var(--mg-accent-soft); }
+.mg-note p { margin: 0; }
 
-.mg-empty { text-align: left; max-width: 52ch; margin: 8px auto 0; }
-.mg-empty h1 { font-size: 20px; margin: 0 0 8px; }
-.mg-empty p { color: var(--mg-ink-soft); margin: 0 0 12px; }
-.mg-empty ol { color: var(--mg-ink-soft); padding-left: 20px; margin: 0 0 16px; }
-.mg-empty li { margin-bottom: 6px; }
+/* ------------------------------------------------------------ empty states */
+
+.mg-empty {
+  text-align: left; max-width: 46rem;
+  background: var(--mg-panel);
+  border: 1px solid var(--mg-line);
+  border-radius: var(--mg-radius);
+  padding: var(--mg-6);
+  box-shadow: var(--mg-shadow);
+}
+.mg-empty h1 { font-family: var(--mg-font-title); font-size: 22px; font-weight: 600; margin-bottom: var(--mg-3); }
+.mg-empty p { color: var(--mg-ink-soft); margin: 0 0 var(--mg-3); max-width: 56ch; }
+.mg-empty ol, .mg-empty ul { color: var(--mg-ink-soft); padding-left: var(--mg-5); margin: 0 0 var(--mg-4); }
+.mg-empty li { margin-bottom: var(--mg-2); }
 
 /* --------------------------------------------------------------- presets */
 
-.mg-presets { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); }
-.mg-preset {
-  display: grid; gap: 8px; text-align: left;
-  padding: 12px; border-radius: var(--mg-radius);
-  border: 1px solid var(--mg-line-strong); background: var(--mg-panel);
-  cursor: pointer;
+.mg-presets {
+  display: grid; gap: var(--mg-3);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
 }
-.mg-preset:hover { border-color: var(--mg-accent); }
-.mg-preset .pname { font-weight: 650; font-size: 14px; }
-.mg-preset .pchar { font-size: 12px; color: var(--mg-muted); line-height: 1.45; }
-.mg-swatches { display: flex; gap: 4px; }
-.mg-swatch { width: 22px; height: 22px; border-radius: 5px; border: 1px solid rgba(0,0,0,0.12); flex: none; }
+/* A preset card is a <button>, so it must out-specify the generic `.mg button`
+ * rule above — that rule is `display: inline-flex` and would otherwise lay the
+ * card out as a row, squeezing the description into a narrow column beside the
+ * name. `.mg .mg-preset` (0,2,0) beats `.mg button` (0,1,1). */
+.mg .mg-preset {
+  display: grid;
+  grid-template-columns: 1fr;
+  justify-items: start;
+  align-content: start;
+  gap: var(--mg-2);
+  width: 100%;
+  text-align: left;
+  padding: var(--mg-4);
+  border-radius: var(--mg-radius);
+  border: 1px solid var(--mg-line-strong);
+  background: var(--mg-panel);
+  cursor: pointer;
+  font-weight: 400;
+}
+.mg .mg-preset:hover { border-color: var(--mg-accent); background: var(--mg-accent-soft); }
+.mg-preset .pname { font-weight: 650; font-size: 14.5px; line-height: 1.3; }
+.mg-preset .pchar {
+  font-size: 12.5px; color: var(--mg-muted); line-height: 1.5;
+  text-wrap: pretty;
+}
+.mg-swatches { display: flex; gap: var(--mg-1); }
+.mg-swatch { width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.12); flex: none; }
+
+/* --------------------------------------------------------------- skeletons */
+
+/* A stable shape while data loads, not a spinner. */
+.mg-skel {
+  display: block;
+  background: var(--mg-line);
+  border-radius: var(--mg-radius-sm);
+  animation: mg-pulse 1.4s ease-in-out infinite;
+}
+@keyframes mg-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* -------------------------------------------------------------- claim flow */
+
+.mg-steps { padding-left: var(--mg-5); margin: 0 0 var(--mg-3); color: var(--mg-ink-soft); }
+.mg-steps li { margin-bottom: var(--mg-3); }
+.mg-code {
+  display: block; margin-top: var(--mg-2);
+  padding: var(--mg-3);
+  border: 1px solid var(--mg-line-strong);
+  border-radius: var(--mg-radius-sm);
+  background: var(--mg-panel-sunken);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 14px; user-select: all; overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------------ misc */
+
+.mg-url {
+  display: flex; align-items: center; gap: var(--mg-2); flex-wrap: wrap;
+}
+.mg-url code {
+  flex: 1 1 16rem; min-width: 0;
+  font-size: 13.5px; overflow-wrap: anywhere;
+  padding: var(--mg-2) var(--mg-3);
+  background: var(--mg-panel-sunken);
+  border: 1px solid var(--mg-line);
+  border-radius: var(--mg-radius-sm);
+}
+
+.mg-defs { margin: 0; display: grid; gap: var(--mg-3); }
+.mg-def { display: grid; grid-template-columns: 1fr; gap: var(--mg-1); }
+@media (min-width: 640px) {
+  .mg-def { grid-template-columns: minmax(9rem, 12rem) 1fr; gap: var(--mg-4); align-items: baseline; }
+}
+.mg-def dt { color: var(--mg-muted); font-size: 13px; margin: 0; }
+.mg-def dd { margin: 0; overflow-wrap: anywhere; }
+
+.mg-hr { border: 0; border-top: 1px solid var(--mg-line); margin: var(--mg-5) 0; }
 
 @media (prefers-reduced-motion: reduce) {
-  .mg * { transition: none !important; animation: none !important; }
+  .mg *, .mg *::before, .mg *::after { transition: none !important; animation: none !important; }
+  .mg-skel { animation: none; opacity: 0.8; }
 }
 
 .visually-hidden {
@@ -480,42 +799,20 @@ a.mg-card:hover { border-color: var(--mg-accent); }
   clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
-/* Skeletons: a stable shape while data loads, not a spinner. The pulse is
- * suppressed under reduced-motion by the rule further up. */
-.mg-skel {
-  display: block;
-  background: var(--mg-line);
-  border-radius: 6px;
-  animation: mg-pulse 1.4s ease-in-out infinite;
-}
-@keyframes mg-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .mg-skel { animation: none; opacity: 0.8; }
-}
+/* A quiet affordance that a list row leads somewhere. */
+.mg-chevron { color: var(--mg-line-strong); flex: none; }
+a.mg-item:hover .mg-chevron { color: var(--mg-accent); }
 
-/* The override marker must not push a field outside its grid column on narrow
- * screens, so it is drawn inside the field's own box. */
-.mg-field[data-state="override"] {
-  border-left: 3px solid var(--mg-accent);
-  padding-left: 10px;
-  margin-left: 0;
+/* The system name, shown once above the section navigation rather than repeated
+ * as every section's page title. */
+.mg-syshead { margin-bottom: var(--mg-5); }
+.mg-syshead h1 {
+  font-family: var(--mg-font-title);
+  font-size: 28px; font-weight: 600; letter-spacing: -0.02em;
+  line-height: 1.15; overflow-wrap: anywhere; text-wrap: balance;
 }
+.mg-syshead p { margin: var(--mg-2) 0 0; color: var(--mg-muted); font-size: 14px; }
 
-/* Claim flow: numbered steps and the code the user copies into PluralKit. */
-.mg-steps { padding-left: 20px; margin: 0 0 12px; color: var(--mg-ink-soft); }
-.mg-steps li { margin-bottom: 10px; }
-.mg-code {
-  display: block;
-  margin-top: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--mg-line-strong);
-  border-radius: 6px;
-  background: var(--mg-bg);
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 14px;
-  user-select: all;
-  overflow-wrap: anywhere;
-}
+/* Within a section, the page header is a step down from the system name. */
+.mg-column .mg-pagehead h1 { font-size: 20px; }
+.mg-column { min-width: 0; }

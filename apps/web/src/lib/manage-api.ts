@@ -26,7 +26,7 @@ async function call<T>(
     cookie: cookieHeader,
     // The API rejects state-changing requests without a recognised Origin, so a
     // server-side mutation must present one explicitly.
-    origin: webConfig.appOrigin,
+    origin: webConfig.publicOrigin,
   };
   if (init.body !== undefined) headers["content-type"] = "application/json";
 

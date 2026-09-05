@@ -34,25 +34,28 @@ The split is deliberate: SQLite permits one writer at a time, and confining all
 database access to one long-lived process removes write contention as a category
 of bug rather than managing it. See `docs/decisions.md` (A1).
 
-## Two origins
+## One origin
 
-pkviewer serves two hostnames from one Next process, split by a single rule:
-**anything rendering user-authored presentation goes on the public origin;
-anything reading or writing a session goes on the app origin.**
+Everything a person visits lives on a single user-facing origin:
 
-| | Serves |
+| Path | |
 |---|---|
-| Public origin | `/`, `/s/<id>`, `/s/<address>`, `/s/<address>/<member>` |
-| App origin | `/login`, `/auth/...`, `/manage/...` |
+| `/` | landing page |
+| `/login` | Discord sign-in |
+| `/auth/...` | OAuth callbacks, proxied to the API by the web tier |
+| `/manage/...` | authenticated management UI |
+| `/s/...` | public system and member pages |
 
-The session cookie uses the `__Host-` prefix, which forbids a `Domain`
-attribute — so it is pinned to the app host and *cannot* reach the public
-origin. That is what makes it safe to serve user-authored presentation there.
+The API stays internal. The browser never talks to it directly: the web tier
+proxies what needs proxying, which is what keeps `INTERNAL_API_ORIGIN` internal.
 
-In development both hostnames resolve to 127.0.0.1 through `*.localhost`, which
-Chrome and Firefox handle with no setup. The Host header therefore behaves
-exactly as in production and the origin split is genuinely exercised locally.
-**Safari does not resolve `*.localhost`**; add `/etc/hosts` entries if you use it.
+The session cookie keeps the `__Host-` prefix. It no longer separates two
+pkviewer hosts, but it still forbids a `Domain` attribute — so the cookie is
+pinned to exactly this host and no sibling subdomain can set or overwrite it.
+
+In development the origin is `http://system.localhost:3000`, which Chrome and
+Firefox resolve to 127.0.0.1 with no setup. **Safari does not resolve
+`*.localhost`**; add an `/etc/hosts` entry if you use it.
 
 ## Prerequisites
 
@@ -72,9 +75,8 @@ That is the supported entry point. It starts both tiers with prefixed output and
 shuts both down together, and prints the URLs:
 
 ```
-public   http://system.localhost:3000     /, /s/...
-app      http://app.localhost:3000        /login, /manage
-api      http://127.0.0.1:3001/health
+site   http://system.localhost:3000   /, /login, /manage, /s/...
+api    http://127.0.0.1:3001/health
 ```
 
 Migrations run automatically on API start, so a fresh checkout needs no bootstrap
@@ -126,6 +128,18 @@ bun test apps/api/test/slugs   # one file
 
 Tests use in-memory SQLite and a stubbed PluralKit, so they need no network and
 no local database.
+
+## Running with Docker
+
+```bash
+cp .env.example .env      # fill in real values
+docker compose up -d --build
+```
+
+Two containers: `api` (Bun, owns SQLite) and `web` (Node, renders and proxies).
+The API port is never published — only the web tier is reachable, and only on
+loopback, so put a TLS proxy in front. Details in
+[docs/deployment.md](docs/deployment.md#running-with-docker).
 
 ## Documentation
 
