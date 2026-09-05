@@ -517,21 +517,35 @@ belongs to someone else are indistinguishable — and every management page is
 writer, so it is the only container with the data volume. It is `expose`d to the
 compose network and never `ports:`-published: the browser reaches it only
 through the web tier's proxy, so publishing 3001 would put the management API on
-the host network. The web tier binds `127.0.0.1:3000` and a TLS-terminating
-reverse proxy sits in front. Guarded by `apps/web/test/docker.test.ts`.
+the host network. The web tier publishes `3000:3000` on every interface — the
+reverse proxy is not on the host's loopback, so a loopback bind could not reach
+it — and TLS terminates at that proxy. Docker publishes ahead of the chain `ufw`
+manages, so keeping 3000 off the public internet is a host or security-group
+concern that compose cannot enforce. Guarded by `apps/web/test/docker.test.ts`.
 
-**D2. Images are built in CI, not on the server.** `.github/workflows/images.yml`
-publishes `USER/pkviewer-api` and `USER/pkviewer-web` to **Docker Hub** for
-amd64 and arm64; `docker-compose.prod.yml` swaps `build:` for `image:` and
-changes nothing else. Docker Hub over GHCR was the owner's preference — both
-registries pin identically, so this was not a technical constraint. CI
-authenticates with a scoped access token in `DOCKERHUB_TOKEN`, never a password.
+**D2. Compose runs images, it never builds them.** There is one
+`docker-compose.yml` with no `build:` section at all;
+`.github/workflows/images.yml` publishes `doughmination/pkviewer-api` and
+`doughmination/pkviewer-web` to **Docker Hub** for amd64 and arm64. Building on the
+server costs CPU it has none of and, worse, makes the running code a function of
+whatever source happens to be checked out rather than of a known commit. An
+overlay file offering both modes was tried and rejected as a second thing to
+keep in step. Docker Hub over GHCR was the owner's preference — both registries
+pin identically, so this was not a technical constraint. CI authenticates with a
+scoped access token in `DOCKERHUB_TOKEN`, never a password.
 
-**D3. Every build gets an immutable tag.** `latest` moves; `sha-<short>` and
-semver tags do not. Production pins one of the immutable ones so a restart, or
-`pull_policy: always`, cannot silently change what is running. A test asserts
-the workflow's build matrix and the overlay's image names cannot drift apart,
-because nothing else connects them and the failure only surfaces at deploy time.
+**D3. Compose runs `latest`, and every start pulls.** The image names and the
+tag are written into `docker-compose.yml` literally — nothing about which image
+runs is configurable, so there is no server-side variable that can drift from
+what CI publishes, and a deploy is `pull && up -d` with nothing to edit.
+`pull_policy: always` is what makes a moving tag work at all: without it a
+restart reuses the local image cache. The owner chose this over pinning an
+immutable tag, having weighed it twice; CI still publishes `sha-<short>` and
+semver tags, so a rollback means retagging one of those as `latest` by hand.
+The accepted costs are that a bad `main` reaches the server on the next pull,
+and that the running version is recorded nowhere. A test asserts CI publishes
+exactly the images compose runs, because nothing else connects those two files
+and the failure only surfaces at deploy time.
 
 **D4. Origins are configuration, never baked into an image.** The web image
 builds with `http://build.invalid` placeholders precisely so that a value

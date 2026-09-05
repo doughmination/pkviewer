@@ -111,6 +111,9 @@ SIGNUP_ENABLED=true
 BETA_ALLOWED_DISCORD_IDS=<your Discord user id>
 ```
 
+Under Docker, `INTERNAL_API_ORIGIN` and `DATABASE_PATH` are set by compose
+(`http://api:3001` and `/data/pkviewer.db`) rather than by `.env`.
+
 Configuration is validated at startup and a missing or malformed value fails
 loudly, naming the variable. It never falls back to an insecure default in
 production.
@@ -156,9 +159,20 @@ backing up.**
 
 ## Running with Docker
 
+`docker-compose.yml` runs images; it never builds them. Images are built and
+published by `.github/workflows/images.yml`, so what runs on the server is
+always something CI produced from a known commit — the server needs no
+toolchain, no source checkout and no spare CPU, and there is no question of
+which working copy the running code came from.
+
+Which images run is not configurable: `docker-compose.yml` names
+`doughmination/pkviewer-api:latest` and `doughmination/pkviewer-web:latest`
+outright. On the server, that file and `.env` are all that is needed:
+
 ```bash
 cp .env.example .env      # fill in the production values
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 Two containers, mirroring the architecture: `api` owns SQLite and is the only
@@ -166,19 +180,18 @@ writer; `web` renders and proxies. Configuration comes from `.env` at run time �
 nothing secret is baked into an image, and no origin is compiled in, so moving
 domains stays a config change.
 
-**The images pin Bun to the version that wrote `bun.lock`.** A frozen install
-cannot satisfy a lockfile written by a newer Bun, so an image pinned behind the
-lockfile fails on the server while building fine locally. When you upgrade Bun,
-update `docker/*.Dockerfile` in the same commit — a test asserts they match.
-
-Three details in `docker-compose.yml` are deliberate:
+Four details in `docker-compose.yml` are deliberate:
 
 - **`api` has no `ports:`, only `expose:`.** Publishing 3001 would put the
   management API straight onto the host network, reachable without going through
   the web tier. It is addressable only as `http://api:3001` from inside.
-- **`web` publishes to `127.0.0.1:3000`, not `0.0.0.0:3000`.** Put a
+- **`web` publishes `3000:3000`, on every interface.** The reverse proxy is not
+  on this host's loopback, so a loopback-only bind cannot reach it. Put a
   TLS-terminating proxy in front; the container itself should not be the thing
-  facing the internet.
+  facing the internet, and keeping it off the public internet is now the host's
+  job rather than compose's — see below.
+- **`pull_policy: always`.** A pinned tag is only a pin if a restart actually
+  fetches it rather than reusing whatever is in the local image cache.
 - **The named volume `pkviewer-data` is the whole of pkviewer's state.** Back
   that up; see below.
 
@@ -192,86 +205,114 @@ docker compose exec api sh -c \
 or more simply, stop the stack and copy the volume. Never `cp` a live WAL
 database.
 
-## Running from published images
+### Port 3000 is not covered by ufw
 
-Building on the server costs CPU it usually has none of, and means the running
-code was compiled somewhere unversioned. `.github/workflows/images.yml` builds
-both images for amd64 and arm64 on every push to `main` and publishes them to
-Docker Hub, so the server pulls instead.
+Docker publishes ports through the `DOCKER-USER` chain and `nat PREROUTING`,
+both of which run **before** the `INPUT` chain that `ufw` and `firewalld`
+manage. `ufw deny 3000` therefore does nothing: the port stays open to anything
+that can route to the host.
 
-The workflow needs two repository secrets, under Settings → Secrets and
-variables → Actions:
+Restrict it outside this file, with whichever applies:
 
-| Secret | Value |
-| --- | --- |
-| `DOCKERHUB_USERNAME` | the Docker Hub account the images live under |
-| `DOCKERHUB_TOKEN` | a personal access token with Read & Write scope, from Docker Hub → Account settings → Personal access tokens |
+- a cloud provider security group allowing 3000 only from the proxy's address;
+- an explicit rule, e.g.
+  `iptables -I DOCKER-USER -p tcp --dport 3000 ! -s <proxy-ip> -j DROP`.
+
+Leaving 3000 open to the internet is not a data leak — it serves the same pages
+the proxy does — but it is reachable over plain http, where `__Host-` `Secure`
+cookies cannot be set, so sign-in fails and the origin in links is wrong. Check
+it with `curl http://<public-ip>:3000/` from off the host.
+
+## Publishing images
+
+`.github/workflows/images.yml` builds both images for amd64 and arm64 on every
+push to `main` and publishes them to Docker Hub.
+
+It needs one repository secret, under Settings → Secrets and variables →
+Actions: **`DOCKERHUB_TOKEN`**, a personal access token with Read & Write scope,
+from Docker Hub → Account settings → Personal access tokens.
 
 Use an access token, never the account password: a token is scoped, listed, and
 revocable on its own without changing the password everywhere else it is used.
+The account name is not a secret — it is half of every published image name —
+so it sits in the workflow as `DOCKERHUB_USER`.
 
-The two repositories — `USER/pkviewer-api` and `USER/pkviewer-web` — are created
-by the first successful push. They are public by default; make them private in
-Docker Hub if that is wanted, and then `docker login` on the server before
-pulling.
+The two repositories — `doughmination/pkviewer-api` and
+`doughmination/pkviewer-web` — are created by the first successful push. They
+are public by default; make them private in Docker Hub if that is wanted, and
+then `docker login` on the server before pulling.
 
-Add to `.env`:
+**The images pin Bun to the version that wrote `bun.lock`.** A frozen install
+cannot satisfy a lockfile written by a newer Bun, so an image pinned behind the
+lockfile fails while building fine locally. When you upgrade Bun, update
+`docker/*.Dockerfile` in the same commit — a test asserts they match.
 
-```
-IMAGE_BASE=USER/pkviewer
-IMAGE_TAG=latest
-```
-
-`IMAGE_BASE` omits the `-api` and `-web` suffix, which the overlay appends, and
-needs no registry host — Docker Hub is the default, so `USER/pkviewer` and
-`docker.io/USER/pkviewer` mean the same thing.
-
-Then:
+To build an image by hand, from the repository root:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker build -f docker/api.Dockerfile .
+docker build -f docker/web.Dockerfile .
 ```
 
-The overlay swaps `build:` for `image:` and changes nothing else — the
-unpublished API port, the loopback web binding and the data volume all still
-come from the base file.
-
-### Pinning
+### Tags
 
 Every build is published under several tags:
 
-| Tag | Moves | Use |
+| Tag | Moves | Notes |
 | --- | --- | --- |
-| `latest` | yes, on every push to `main` | convenience only |
-| `sha-abc1234` | never | pin to an exact commit |
-| `1.2.3` | never | pin to a release, from a `v1.2.3` git tag |
-| `1.2` | yes, within a minor series | patch updates without a version bump |
+| `latest` | yes, on every push to `main` | what compose runs |
+| `sha-abc1234` | never | the exact commit |
+| `1.2.3` | never | a release, from a `v1.2.3` git tag |
+| `1.2` | yes, within a minor series | a patch series |
 
-Pin `IMAGE_TAG` to one of the immutable tags in production. `latest` means a
-`docker compose pull` — or an automatic restart with `pull_policy: always` —
-can silently change what is running, and there is then no record of what was
-running when something broke.
+Compose runs `latest` and nothing else, so a `docker compose pull` is the whole
+upgrade and there is no version to keep in step between the repository and the
+server. The cost is that a bad `main` reaches the server on the next pull, and
+that the running version is not recorded anywhere.
 
-For an exact, unfakeable pin, use a digest instead of a tag: `docker buildx
-imagetools inspect USER/pkviewer-api:1.2.3` prints one, and
-`IMAGE_TAG=1.2.3@sha256:…` works in the overlay.
+To go back, pull an older tag under the `latest` name by hand:
 
-## Deploying a change
+```bash
+docker pull doughmination/pkviewer-api:sha-abc1234
+docker tag doughmination/pkviewer-api:sha-abc1234 doughmination/pkviewer-api:latest
+docker compose up -d --no-deps api      # without `pull`, which would undo it
+```
+
+That holds until the next `docker compose pull`, so it buys time to fix `main`
+rather than being a place to sit.
+
+### Deploying a new image
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Nothing to edit: CI publishes `latest`, `pull` fetches it, `up -d` recreates
+whichever containers changed.
+
+Migrations run on API start, inside the one process that owns the database, and
+are forward-only. Test them against a copy of production data before deploying a
+schema change — retagging an older image does not roll a migration back.
+
+## Working locally
+
+Deployment goes through images, but the checks that gate one still run here:
 
 ```bash
 bun install
 bun run check          # guard, typecheck, tests
 bun run build
-# restart both processes; migrations run on API start
 ```
-
-Migrations are forward-only. Test them against a copy of production data before
-deploying a schema change.
 
 The production build writes to `.next-prod` and the dev server uses `.next`, so
 building never disturbs a running development server. `NEXT_DIST_DIR` overrides
 the directory if a deployment needs it elsewhere.
+
+Running the two processes directly — `bun run dev` — needs the same environment
+variables as the containers, minus the image ones. `API_HOST` defaults to
+`127.0.0.1` outside Docker; the images set it to `0.0.0.0` so the web container
+can reach the API over the compose network.
 
 ## Moving domains
 

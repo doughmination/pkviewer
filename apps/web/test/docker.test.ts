@@ -56,40 +56,67 @@ describe("container toolchain", () => {
     expect(api).not.toMatch(/^\s+ports:/m);
   });
 
-  test("the web tier publishes only to loopback", () => {
+  // Published on every interface deliberately: the proxy is not on this host's
+  // loopback. Docker bypasses ufw, so nothing here can enforce the boundary --
+  // this only pins the port the proxy is configured against.
+  test("the web tier publishes 3000", () => {
     const compose = readFileSync(join(root, "docker-compose.yml"), "utf8");
-    expect(compose).toContain('"127.0.0.1:3000:3000"');
+    expect(compose).toContain('"3000:3000"');
   });
 });
 
 /**
- * The publish workflow and the production overlay have to agree on image names,
- * and nothing else connects them: CI pushes `USER/pkviewer-api`, the server
- * pulls whatever the overlay spells. Rename one and the other keeps working
- * right up until a deploy pulls a tag that was never published.
+ * The publish workflow and compose have to agree on image names, and nothing
+ * else connects them: CI pushes `doughmination/pkviewer-api`, the server runs
+ * whatever compose spells. Rename one and the other keeps working right up
+ * until a deploy pulls a tag that was never published.
  */
 describe("published images", () => {
   const workflow = readFileSync(join(root, ".github/workflows/images.yml"), "utf8");
-  const overlay = readFileSync(join(root, "docker-compose.prod.yml"), "utf8");
+  const compose = readFileSync(join(root, "docker-compose.yml"), "utf8");
+  // Only the services block: top-level `volumes:` also holds two-space keys.
+  const services = compose.slice(compose.indexOf("services:") + 9).split(/^\S/m)[0]!;
 
+  const account = workflow.match(/DOCKERHUB_USER: (\S+)/)?.[1];
   // Just the build matrix: `- name:` also introduces every workflow step.
   const matrix = workflow.slice(workflow.indexOf("include:")).split(/^ {4}\w/m)[0]!;
-  const built = [...matrix.matchAll(/- name: ([\w-]+)$/gm)].map((m) => m[1]!);
-  const pulled = [...overlay.matchAll(/image: \$\{IMAGE_BASE[^}]*\}-([\w-]+):/g)].map((m) => m[1]!);
+  const built = [...matrix.matchAll(/- name: ([\w-]+)$/gm)].map(
+    (m) => `${account}/pkviewer-${m[1]!}`,
+  );
+  const run = [...services.matchAll(/image: (\S+?):latest$/gm)].map((m) => m[1]!);
 
-  test("CI builds an image for every service the overlay pulls", () => {
+  test("CI publishes exactly the images compose runs", () => {
     // Both sides come from regexes, so an empty match on both would otherwise
     // agree vacuously.
     expect(built.length).toBeGreaterThan(0);
-    expect(new Set(built)).toEqual(new Set(pulled));
+    expect(new Set(built)).toEqual(new Set(run));
   });
 
-  test("the overlay pulls an image for every service compose defines", () => {
-    const compose = readFileSync(join(root, "docker-compose.yml"), "utf8");
-    // Only the services block: top-level `volumes:` also holds two-space keys.
-    const block = compose.slice(compose.indexOf("services:") + 9).split(/^\S/m)[0]!;
-    const services = [...block.matchAll(/^ {2}([\w-]+):$/gm)].map((m) => m[1]!);
-    expect(new Set(pulled)).toEqual(new Set(services));
+  test("every service runs a published image", () => {
+    const names = [...services.matchAll(/^ {2}([\w-]+):$/gm)].map((m) => m[1]!);
+    expect(run).toHaveLength(names.length);
+  });
+
+  // Compose runs images, it does not build them. A `build:` section would let a
+  // server quietly compile whatever source is lying around instead of running
+  // the pinned image, which is the failure this whole arrangement avoids.
+  test("compose never builds", () => {
+    expect(services).not.toContain("build:");
+    expect(services).not.toContain("dockerfile:");
+  });
+
+  // A pinned tag is only a pin if a restart actually fetches it.
+  test("every service pulls on every start", () => {
+    expect([...services.matchAll(/^ {4}pull_policy: always$/gm)]).toHaveLength(run.length);
+  });
+
+  // Nothing about which image runs is configurable, so there is no server-side
+  // variable that can drift from what CI publishes.
+  test("image references are fully literal", () => {
+    expect(run.length).toBeGreaterThan(0);
+    for (const line of services.match(/^ {4}image: .*$/gm) ?? []) {
+      expect(line).not.toContain("$");
+    }
   });
 
   // A password would work and would be wrong: a token is scoped and can be
