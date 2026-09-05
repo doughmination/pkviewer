@@ -517,11 +517,13 @@ belongs to someone else are indistinguishable — and every management page is
 writer, so it is the only container with the data volume. It is `expose`d to the
 compose network and never `ports:`-published: the browser reaches it only
 through the web tier's proxy, so publishing 3001 would put the management API on
-the host network. The web tier publishes `3000:3000` on every interface — the
-reverse proxy is not on the host's loopback, so a loopback bind could not reach
-it — and TLS terminates at that proxy. Docker publishes ahead of the chain `ufw`
-manages, so keeping 3000 off the public internet is a host or security-group
-concern that compose cannot enforce. Guarded by `apps/web/test/docker.test.ts`.
+the host network. The web tier publishes `3000:3000` on every interface: the
+reference deployment has no public IP and gets its traffic through a Cloudflare
+Tunnel, which dials out and forwards inward, and a loopback bind is unreachable
+from another container or machine. TLS terminates at Cloudflare. The http hop
+from tunnel to container is safe because `Secure` is set unconditionally rather
+than inferred from the request, so no forwarded-proto trust is configured
+anywhere. Guarded by `apps/web/test/docker.test.ts`.
 
 **D2. Compose runs images, it never builds them.** There is one
 `docker-compose.yml` with no `build:` section at all;

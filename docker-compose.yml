@@ -71,17 +71,17 @@ services:
     # rather than reuse whatever is in the local image cache.
     pull_policy: always
     restart: unless-stopped
-    # The only thing reachable from outside. Published on every interface, not
-    # just loopback, because the reverse proxy is not on this host's loopback.
+    # The way in. Published on every interface, not just loopback, because a
+    # loopback bind is unreachable from another container or another machine --
+    # and the reference deployment has no public IP: Cloudflare Tunnel dials
+    # out and forwards here, so nothing is inbound-reachable at the edge.
     #
-    # This is NOT firewalled by ufw or firewalld: Docker publishes through
-    # DOCKER-USER and nat PREROUTING, which run before the INPUT chain those
-    # tools manage, so `ufw deny 3000` has no effect. Whatever keeps 3000 off
-    # the public internet has to live outside this file — a cloud security
-    # group, or an explicit DOCKER-USER rule.
+    # Plain http on that hop is fine. TLS terminates at Cloudflare, and `Secure`
+    # is set unconditionally rather than inferred from the request, so no
+    # forwarded-proto trust needs configuring.
     #
-    # Reaching it over plain http also breaks sign-in: cookies are `__Host-`
-    # and `Secure`, so only the https origin can hold a session.
+    # On a host that DOES have a public IP, note that Docker publishes ahead of
+    # ufw's chain, so `ufw deny 3000` would not close this.
     ports:
       - "3000:3000"
     environment:

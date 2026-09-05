@@ -185,11 +185,10 @@ Four details in `docker-compose.yml` are deliberate:
 - **`api` has no `ports:`, only `expose:`.** Publishing 3001 would put the
   management API straight onto the host network, reachable without going through
   the web tier. It is addressable only as `http://api:3001` from inside.
-- **`web` publishes `3000:3000`, on every interface.** The reverse proxy is not
-  on this host's loopback, so a loopback-only bind cannot reach it. Put a
-  TLS-terminating proxy in front; the container itself should not be the thing
-  facing the internet, and keeping it off the public internet is now the host's
-  job rather than compose's — see below.
+- **`web` publishes `3000:3000`, on every interface.** A loopback-only bind is
+  unreachable from another container or another machine, which is what
+  Cloudflare Tunnel needs. TLS terminates at Cloudflare; the container is never
+  the thing facing the internet. See below.
 - **`pull_policy: always`.** A pinned tag is only a pin if a restart actually
   fetches it rather than reusing whatever is in the local image cache.
 - **The named volume `pkviewer-data` is the whole of pkviewer's state.** Back
@@ -205,23 +204,29 @@ docker compose exec api sh -c \
 or more simply, stop the stack and copy the volume. Never `cp` a live WAL
 database.
 
-### Port 3000 is not covered by ufw
+### Getting traffic in: Cloudflare Tunnel
 
-Docker publishes ports through the `DOCKER-USER` chain and `nat PREROUTING`,
-both of which run **before** the `INPUT` chain that `ufw` and `firewalld`
-manage. `ufw deny 3000` therefore does nothing: the port stays open to anything
-that can route to the host.
+The reference deployment has no public IP. `cloudflared` dials out to
+Cloudflare, which terminates TLS and forwards to the container, so nothing is
+inbound-reachable and no ports need opening at the network edge.
 
-Restrict it outside this file, with whichever applies:
+Point the tunnel at `http://<host-lan-ip>:3000` — or `http://web:3000` if
+`cloudflared` runs as a container on the same compose network, which avoids
+publishing the port at all. `3000:3000` rather than `127.0.0.1:3000:3000` is
+what makes the first form work: a loopback bind is not reachable from another
+container or another machine.
 
-- a cloud provider security group allowing 3000 only from the proxy's address;
-- an explicit rule, e.g.
-  `iptables -I DOCKER-USER -p tcp --dport 3000 ! -s <proxy-ip> -j DROP`.
+**Plain http on that hop is fine.** The browser talks https to Cloudflare, and
+`Secure` is set unconditionally rather than inferred from the request
+(`apps/api/src/http/cookies.ts`), so no forwarded-proto trust needs configuring.
+`PUBLIC_ORIGIN` must still be the https URL: it is what the CSRF check compares
+the `Origin` header against, and what every absolute link is built from.
 
-Leaving 3000 open to the internet is not a data leak — it serves the same pages
-the proxy does — but it is reachable over plain http, where `__Host-` `Secure`
-cookies cannot be set, so sign-in fails and the origin in links is wrong. Check
-it with `curl http://<public-ip>:3000/` from off the host.
+One thing to be aware of if this ever runs on a host that *does* have a public
+IP: Docker publishes through the `DOCKER-USER` chain and `nat PREROUTING`, which
+run **before** the `INPUT` chain `ufw` and `firewalld` manage, so `ufw deny 3000`
+does nothing. Restricting it then means a security group, or
+`iptables -I DOCKER-USER -p tcp --dport 3000 ! -s <source> -j DROP`.
 
 ## Publishing images
 
