@@ -26,13 +26,12 @@ apps/web        Next.js on Node. Renders pages and the management UI. Has no
                 database driver and no PluralKit client — it reaches the API
                 over HTTP.
 packages/shared Types, the theme vocabulary, and validation shared by both.
-docs/           Decision log. Start with docs/decisions.md.
 scripts/        Dev runner and the hardcoded-origin guard.
 ```
 
 The split is deliberate: SQLite permits one writer at a time, and confining all
 database access to one long-lived process removes write contention as a category
-of bug rather than managing it. See `docs/decisions.md` (A1).
+of bug rather than managing it.
 
 ## One origin
 
@@ -87,9 +86,9 @@ step.
 > `apps/api` will *not* find it and will fail at startup naming the missing
 > variable. Use `bun run dev`.
 
-Signing in needs Discord OAuth credentials; see
-[docs/deployment.md](docs/deployment.md#environment-variables). Everything else —
-public pages, the whole rendering path — works without them.
+Signing in needs Discord OAuth credentials; see `.env.example`, which documents
+every variable. Everything else — public pages, the whole rendering path — works
+without them, and the API says so at startup rather than refusing to run.
 
 ## Commands
 
@@ -137,23 +136,20 @@ docker compose pull && docker compose up -d
 ```
 
 Two containers: `api` (Bun, owns SQLite) and `web` (Node, renders and proxies).
-The API port is never published — only the web tier is reachable, and only on
-loopback, so put a TLS proxy in front. Details in
-[docs/deployment.md](docs/deployment.md#running-with-docker).
+The API port is never published — only the web tier is reachable, so put a TLS
+proxy or a tunnel in front. `docker-compose.yml` is commented with the reasoning
+for each choice.
 
 ## Documentation
 
 **User-facing documentation is a separate site and is not served by this
-application.** Its URL is configuration (`PUBLIC_DOCS_URL`); leave it empty and
-the documentation links simply do not appear.
+application:** [docs.doughmination.gay](https://docs.doughmination.gay/projects/pkviewer).
+It also carries the support links — Discord, Matrix, and the repository.
 
-Developer documentation lives here:
-
-- [docs/decisions.md](docs/decisions.md) — every signed-off decision and the
-  invariants that follow from it, each naming the test that guards it. Read this
-  before changing anything structural.
-- [docs/deployment.md](docs/deployment.md) — environment variables, deployment
-  shape, backups.
+The reasoning for anything structural lives in the code, next to what it
+constrains: the migrations explain the schema, `docker-compose.yml` explains the
+deployment shape, and the tests state the invariant each one guards. Start with
+the file you are changing.
 
 ## Third-party notices
 
@@ -167,4 +163,11 @@ Built with [Hono](https://hono.dev), [Next.js](https://nextjs.org),
 [react-bootstrap-icons](https://github.com/ricardo-ch/react-bootstrap-icons).
 Fonts are served from [Google Fonts](https://fonts.google.com).
 
-No licence has been chosen yet.
+## Licence
+
+[MIT](LICENSE). © 2026 Clove Twilight.
+
+The licence covers this source code. It does not grant any rights in the
+pkviewer name, and it changes nothing about the relationship with PluralKit:
+pkviewer is an independent third-party project, not affiliated with or endorsed
+by PluralKit, and anything you build from this source is too.
