@@ -7,7 +7,13 @@
 # expects. That avoids installing Bun through npm in two separate stages, which
 # cost about 70 seconds of every build.
 
-FROM oven/bun:1.2-alpine AS deps
+# Bun must match the version that wrote bun.lock.
+#
+# This was pinned to 1.2 while the lockfile came from 1.4, and a frozen install
+# cannot satisfy a lockfile from a newer Bun — the build failed on the server
+# while working locally. Keep this in step with the Bun you develop and test
+# with; a test asserts they match.
+FROM oven/bun:1.4-alpine AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY apps/api/package.json apps/api/
@@ -18,7 +24,7 @@ COPY packages/shared/package.json packages/shared/
 # lockfile is genuinely out of date, and then commit the updated one.
 RUN bun install --frozen-lockfile
 
-FROM oven/bun:1.2-alpine AS build
+FROM oven/bun:1.4-alpine AS build
 WORKDIR /app
 # The whole installed tree — see the note in api.Dockerfile about why individual
 # node_modules paths are not safe to name.

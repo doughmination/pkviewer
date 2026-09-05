@@ -3,7 +3,13 @@
 # Built from the repository root, because it depends on the shared workspace
 # package: `docker build -f docker/api.Dockerfile .`
 
-FROM oven/bun:1.2-alpine AS deps
+# Bun must match the version that wrote bun.lock.
+#
+# This was pinned to 1.2 while the lockfile came from 1.4, and a frozen install
+# cannot satisfy a lockfile from a newer Bun — the build failed on the server
+# while working locally. Keep this in step with the Bun you develop and test
+# with; a test asserts they match.
+FROM oven/bun:1.4-alpine AS deps
 WORKDIR /app
 # Manifests first, so a source-only change does not reinstall dependencies.
 COPY package.json bun.lock ./
@@ -15,7 +21,7 @@ COPY packages/shared/package.json packages/shared/
 # lockfile is genuinely out of date, and then commit the updated one.
 RUN bun install --frozen-lockfile
 
-FROM oven/bun:1.2-alpine AS runtime
+FROM oven/bun:1.4-alpine AS runtime
 WORKDIR /app
 
 # A non-root user owning the data directory the volume mounts onto.

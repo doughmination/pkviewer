@@ -160,6 +160,11 @@ writer; `web` renders and proxies. Configuration comes from `.env` at run time â
 nothing secret is baked into an image, and no origin is compiled in, so moving
 domains stays a config change.
 
+**The images pin Bun to the version that wrote `bun.lock`.** A frozen install
+cannot satisfy a lockfile written by a newer Bun, so an image pinned behind the
+lockfile fails on the server while building fine locally. When you upgrade Bun,
+update `docker/*.Dockerfile` in the same commit â€” a test asserts they match.
+
 Three details in `docker-compose.yml` are deliberate:
 
 - **`api` has no `ports:`, only `expose:`.** Publishing 3001 would put the
