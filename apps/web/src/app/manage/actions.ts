@@ -212,11 +212,9 @@ export async function discoverSystems(): Promise<
     return {
       ok: false,
       error:
-        result.error === "beta_not_allowed"
-          ? "Claiming is limited while pkviewer is in beta, and this account is not on the list yet."
-          : result.error === "unauthenticated"
-            ? "Your session has expired. Sign in again."
-            : "Could not reach PluralKit just now. Try again shortly.",
+        result.error === "unauthenticated"
+          ? "Your session has expired. Sign in again."
+          : "Could not reach PluralKit just now. Try again shortly.",
     };
   }
   return { ok: true, systems: result.value.systems };
@@ -230,8 +228,6 @@ function claimError(error: string): string {
       return "pkviewer could not confirm that system belongs to you.";
     case "not_found":
       return "PluralKit does not have a system with that ID.";
-    case "beta_not_allowed":
-      return "Claiming is limited while pkviewer is in beta.";
     case "upstream_unavailable":
       return "PluralKit could not be reached. Try again shortly.";
     default:
@@ -282,4 +278,23 @@ export async function verifyChallenge(
   }
   revalidatePath("/manage", "layout");
   return { ok: true, systemId: result.value.systemId };
+}
+
+/**
+ * Accepting, declining or hiding a badge.
+ *
+ * A system-scoped action behind the ordinary grant: granting a badge is an
+ * admin power, but deciding whether it appears on your own page is not.
+ */
+export async function respondToBadgeAction(
+  systemId: string,
+  badgeId: string,
+  action: "accept" | "decline" | "hide" | "show",
+): Promise<ActionResult> {
+  const result = await manageApi.post(`/manage/systems/${systemId}/badges/${badgeId}`, { action });
+  if (!result.ok) return { ok: false, error: messageFor(result.error, result.status) };
+  revalidatePath(`/manage/${systemId}`, "layout");
+  // The public page renders accepted badges, so it has to re-render too.
+  revalidatePath("/s", "layout");
+  return { ok: true };
 }

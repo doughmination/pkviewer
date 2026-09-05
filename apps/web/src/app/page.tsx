@@ -6,7 +6,7 @@ import { webConfig } from "@/lib/config.ts";
  * Rendered per request, not prerendered.
  *
  * This page embeds the configured public and app origins. Static prerendering
- * would bake the BUILD-TIME origin into the HTML, so moving from the beta host
+ * would bake the BUILD-TIME origin into the HTML, so moving to another host
  * to the production domain would need a rebuild rather than an env change —
  * which is exactly what decision 1 says must not be true. The cost is rendering
  * two tiny pages per request.
@@ -74,7 +74,7 @@ export default function LandingPage() {
         </p>
       ) : null}
 
-      <SiteDisclosure beta={webConfig.beta} />
+      <SiteDisclosure />
     </main>
   );
 }

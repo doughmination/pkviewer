@@ -61,7 +61,7 @@ export default async function MemberPage({ params }: Params) {
     );
   }
 
-  const { system, member, socials, tokens, composition, beta } = result.value;
+  const { system, member, socials, tokens, composition } = result.value;
   if (!member) notFound();
 
   const showBanner = composition["banner.display"] !== "hidden";
@@ -122,7 +122,7 @@ export default async function MemberPage({ params }: Params) {
 
       <SocialLinks links={socials} />
 
-      <SiteDisclosure beta={beta} />
+      <SiteDisclosure />
     </main>
   );
 }

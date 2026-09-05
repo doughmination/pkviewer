@@ -2,28 +2,29 @@ import { BoxArrowUpRight, ClockHistory, InfoCircle } from "react-bootstrap-icons
 import { webConfig } from "@/lib/config.ts";
 
 /**
- * The beta and third-party disclosures are ONE piece of UI, not two banners.
+ * The third-party disclosure.
  *
- * Both say the same underlying thing — this is pkviewer, not PluralKit, and it
- * is early — so stacking two notices on every page would be noise. The final
- * wording is a product decision; this is the structure it will occupy.
+ * One notice, on every public page: pkviewer is not PluralKit. This disclosure
+ * is permanent — it is what keeps a third-party site from reading as an
+ * official one.
  */
-export function SiteDisclosure({ beta }: { beta: boolean }) {
+export function SiteDisclosure() {
   return (
     <footer className="site-footer muted">
       <p className="prose">
         <InfoCircle aria-hidden="true" /> Presented by pkviewer, a third-party
         website for PluralKit systems. pkviewer is not PluralKit, and system and
         member information shown here comes from PluralKit&apos;s public API.
-        {beta ? " pkviewer is in beta and things will change." : null}
       </p>
-      {webConfig.docsUrl ? (
-        <p>
+      <p className="site-footer-links">
+        <a href="/credits">Credits</a>
+        <a href="/badges">Badges</a>
+        {webConfig.docsUrl ? (
           <a href={webConfig.docsUrl} rel="noopener">
             Documentation <BoxArrowUpRight aria-hidden="true" />
           </a>
-        </p>
-      ) : null}
+        ) : null}
+      </p>
     </footer>
   );
 }

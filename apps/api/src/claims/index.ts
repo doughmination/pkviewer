@@ -28,7 +28,6 @@ export type ClaimFailure =
   | "not_found"
   | "already_claimed"
   | "not_verified"
-  | "beta_not_allowed"
   | "upstream_unavailable";
 
 export type ClaimResult =

@@ -1,4 +1,4 @@
-import type { PageModel } from "@pkviewer/shared";
+import type { CreditSection, PageModel, PublicBadge } from "@pkviewer/shared";
 import { webConfig } from "./config.ts";
 
 /**
@@ -43,4 +43,14 @@ export function getMemberPage(ref: string, memberRef: string): Promise<FetchOutc
   return getJson<PublicPage>(
     `/public/systems/${encodeURIComponent(ref)}/members/${encodeURIComponent(memberRef)}`,
   );
+}
+
+/** The credits page. Platform-owned content: no subject, no session. */
+export function getCredits(): Promise<FetchOutcome<{ sections: CreditSection[] }>> {
+  return getJson<{ sections: CreditSection[] }>("/public/credits");
+}
+
+/** The badge glossary, so every badge on a page can link to what it means. */
+export function getBadgeCatalogue(): Promise<FetchOutcome<{ badges: PublicBadge[] }>> {
+  return getJson<{ badges: PublicBadge[] }>("/public/badges");
 }

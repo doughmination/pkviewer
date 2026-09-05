@@ -2,8 +2,9 @@ import { Hono } from "hono";
 import { config } from "./config/index.ts";
 import { openDb } from "./db/index.ts";
 import { migrate } from "./db/migrate.ts";
-import { betaNoIndex, requireKnownOrigin, securityHeaders } from "./http/middleware.ts";
+import { requireKnownOrigin, securityHeaders } from "./http/middleware.ts";
 import { authRoutes } from "./http/routes/auth.ts";
+import { adminRoutes } from "./http/routes/admin.ts";
 import { claimRoutes } from "./http/routes/claims.ts";
 import { slugRoutes } from "./http/routes/slugs.ts";
 import { publicRoutes } from "./http/routes/public.ts";
@@ -43,7 +44,6 @@ export type AppEnv = { Variables: { db: typeof db; pk: PkClient } };
 const app = new Hono<AppEnv>();
 
 app.use("*", securityHeaders());
-app.use("*", betaNoIndex(cfg));
 app.use("*", requireKnownOrigin(cfg));
 app.use("*", async (c, next) => {
   c.set("db", db);
@@ -63,6 +63,8 @@ app.route(
   }),
 );
 
+app.route("/admin", adminRoutes({ cfg, db }));
+
 app.route("/claims", claimRoutes({ cfg, db, pk }));
 
 app.route("/manage/slugs", slugRoutes({ cfg, db, pk }));
@@ -74,7 +76,6 @@ app.get("/health", (c) =>
   c.json({
     ok: true,
     version: PKVIEWER_VERSION,
-    beta: cfg.beta.enabled,
     // Echoed so a deploy can be checked for the domain-portability rules without
     // shell access. Never includes secrets.
     origins: {
@@ -86,7 +87,7 @@ app.get("/health", (c) =>
 );
 
 console.log(
-  `[api] pkviewer ${PKVIEWER_VERSION} on ${cfg.apiHost}:${cfg.apiPort} (beta=${cfg.beta.enabled})`,
+  `[api] pkviewer ${PKVIEWER_VERSION} on ${cfg.apiHost}:${cfg.apiPort}`,
 );
 console.log(`[api] pk user-agent: ${cfg.pk.userAgent}`);
 

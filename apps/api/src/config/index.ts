@@ -5,9 +5,9 @@ import { PKVIEWER_VERSION } from "./version.ts";
 /**
  * All deployment-varying values enter the application here and nowhere else.
  *
- * The domain the beta happens to run on is configuration, not architecture: no
+ * The domain pkviewer runs on is configuration, not architecture: no
  * absolute pkviewer URL is persisted to the database, and every public URL is
- * composed at render time from these origins. Moving from the beta host to the
+ * composed at render time from these origins. Moving from one host to the
  * eventual production domain is then an env change, not a migration.
  */
 
@@ -43,6 +43,13 @@ const boolish = z
   .enum(["true", "false", "1", "0"])
   .default("false")
   .transform((v) => v === "true" || v === "1");
+
+function boolishDefault(value: boolean) {
+  return z
+    .enum(["true", "false", "1", "0"])
+    .default(value ? "true" : "false")
+    .transform((v) => v === "true" || v === "1");
+}
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -84,9 +91,10 @@ const envSchema = z.object({
   DISCORD_CLIENT_SECRET: z.string().default(""),
   DISCORD_REDIRECT_URIS: csv,
 
-  BETA_MODE: boolish,
-  SIGNUP_ENABLED: boolish,
-  BETA_ALLOWED_DISCORD_IDS: csv,
+  // Defaults to open. It was previously the beta's companion switch and
+  // defaulted closed; with the allow-list gone, a deployment that sets nothing
+  // should let people sign up rather than silently turn nobody away.
+  SIGNUP_ENABLED: boolishDefault(true),
 
   SESSION_SECRET: z.string().default(""),
 });
@@ -124,11 +132,13 @@ export type Config = Readonly<{
     redirectUris: readonly string[];
   };
 
-  beta: {
-    enabled: boolean;
-    signupEnabled: boolean;
-    allowedDiscordIds: ReadonlySet<string>;
-  };
+  /**
+   * Whether new accounts may be created.
+   *
+   * An operational switch: signing in with an existing account
+   * always works, so closing signup never locks anyone out of what they have.
+   */
+  signupEnabled: boolean;
 
   sessionSecret: string;
 }>;
@@ -233,14 +243,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     }
   }
 
-  // Claiming on a beta deployment is gated by an explicit allow-list. Public
-  // viewing is never gated — that is the point of the platform.
-  if (e.BETA_MODE && e.SIGNUP_ENABLED && e.BETA_ALLOWED_DISCORD_IDS.length === 0 && isProduction) {
-    throw new ConfigError(
-      "BETA_MODE with SIGNUP_ENABLED requires BETA_ALLOWED_DISCORD_IDS to be non-empty",
-    );
-  }
-
   return Object.freeze({
     nodeEnv: e.NODE_ENV,
     isProduction,
@@ -266,11 +268,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       redirectUris: Object.freeze(e.DISCORD_REDIRECT_URIS),
     }),
 
-    beta: Object.freeze({
-      enabled: e.BETA_MODE,
-      signupEnabled: e.SIGNUP_ENABLED,
-      allowedDiscordIds: new Set(e.BETA_ALLOWED_DISCORD_IDS),
-    }),
+    signupEnabled: e.SIGNUP_ENABLED,
 
     sessionSecret,
   });
@@ -281,7 +279,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
  *
  * The contact URL points at the repository rather than the deployment origin on
  * purpose: PluralKit asks that an application's UA be stable and identifiable,
- * and the repository URL survives the beta -> production domain move that the
+ * and the repository URL survives any domain move that the
  * deployment origin would not.
  */
 export function buildUserAgent(contactUrl: string): string {

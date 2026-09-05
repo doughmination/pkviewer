@@ -1,23 +1,6 @@
 import type { MiddlewareHandler } from "hono";
 import type { Config } from "../config/index.ts";
 
-/**
- * Keeps the beta deployment out of search indexes.
- *
- * Two reasons, and the second is the one that is easy to forget: testers' pages
- * would be indexed before they intended, which is a privacy problem on a
- * privacy-first platform; and the eventual domain move would leave stale
- * results pointing at a host that no longer serves the site.
- */
-export function betaNoIndex(cfg: Config): MiddlewareHandler {
-  return async (c, next) => {
-    await next();
-    if (cfg.beta.enabled) {
-      c.header("X-Robots-Tag", "noindex, nofollow");
-    }
-  };
-}
-
 export function securityHeaders(): MiddlewareHandler {
   return async (c, next) => {
     await next();

@@ -14,7 +14,6 @@ import type { Config } from "../../config/index.ts";
 import type { Db } from "../../db/index.ts";
 import type { PkClient } from "../../pk/client.ts";
 import { readCookie, SESSION_COOKIE } from "../cookies.ts";
-import { canClaim } from "./auth.ts";
 
 type Deps = { cfg: Config; db: Db; pk: PkClient; now?: () => number };
 
@@ -31,8 +30,9 @@ function caller(c: Context, db: Db, now: number): Caller | null {
 /**
  * Claim-flow endpoints.
  *
- * Every route requires a session. Claiming is additionally gated during beta by
- * an allow-list of Discord ids — public viewing never is.
+ * Every route requires a session; public viewing never does. Claiming is open
+ * to any signed-in account — what gates it is proving control of the system,
+ * not membership of a list.
  */
 export function claimRoutes(deps: Deps): Hono {
   const { cfg, db, pk } = deps;
@@ -43,12 +43,6 @@ export function claimRoutes(deps: Deps): Hono {
   const requireClaimant = (c: Context): Caller | Response => {
     const who = caller(c, db, now());
     if (!who) return c.json({ error: "unauthenticated" }, 401);
-    if (!canClaim(cfg, who.discordIds)) {
-      return c.json(
-        { error: "beta_not_allowed", detail: "claiming is limited during the beta" },
-        403,
-      );
-    }
     return who;
   };
 
@@ -178,8 +172,6 @@ function statusFor(reason: string): 400 | 403 | 404 | 409 | 502 {
       return 404;
     case "already_claimed":
       return 409;
-    case "beta_not_allowed":
-      return 403;
     case "upstream_unavailable":
       return 502;
     default:

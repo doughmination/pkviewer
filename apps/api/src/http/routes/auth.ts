@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { isAdmin } from "../../admin/index.ts";
 import type { Config } from "../../config/index.ts";
 import {
   createPkcePair,
@@ -150,7 +151,7 @@ export function authRoutes(deps: Deps): Hono {
     // SIGNUP_ENABLED gates creating a NEW account. Existing accounts can always
     // sign in, so turning signup off never locks current testers out.
     const result = upsertAccountForDiscord(db, profile, t, {
-      allowCreate: cfg.beta.signupEnabled,
+      allowCreate: cfg.signupEnabled,
     });
 
     if (!result.account) return fail(c, cfg, "signup_disabled");
@@ -191,7 +192,7 @@ export function authRoutes(deps: Deps): Hono {
       authenticated: true,
       accountId: session.accountId,
       discordIds: discordIdsForAccount(db, session.accountId),
-      canClaim: canClaim(cfg, discordIdsForAccount(db, session.accountId)),
+      admin: isAdmin(db, session.accountId),
     });
   });
 
@@ -214,18 +215,6 @@ export function authRoutes(deps: Deps): Hono {
   return app;
 }
 
-/**
- * Beta claiming gate.
- *
- * Public viewing is never gated — that is the point of the platform. Claiming a
- * system on infrastructure still being reshaped weekly is gated to an
- * allow-list of Discord ids.
- */
-export function canClaim(cfg: Config, discordIds: readonly string[]): boolean {
-  if (!cfg.beta.enabled) return true;
-  if (cfg.beta.allowedDiscordIds.size === 0) return false;
-  return discordIds.some((id) => cfg.beta.allowedDiscordIds.has(id));
-}
 
 /** Failures return the user to a single login page with a coarse reason code.
  * The codes are deliberately non-specific: they tell the user what to do, not

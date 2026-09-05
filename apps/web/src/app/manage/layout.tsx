@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { BoxArrowUpRight } from "react-bootstrap-icons";
-import { isAuthenticated } from "@/lib/manage-api.ts";
+import { isAuthenticated, isPlatformAdmin } from "@/lib/manage-api.ts";
 import { webConfig } from "@/lib/config.ts";
 
 export const metadata: Metadata = {
@@ -21,12 +21,17 @@ export default async function ManageLayout({ children }: { children: React.React
     redirect("/login?return_to=/manage");
   }
 
+  // Shown only to admins, but this is presentation: /admin re-checks the grant
+  // on the server, so hiding the link is not what keeps anyone out.
+  const admin = await isPlatformAdmin();
+
   return (
     <div className="mg">
       <header className="mg-bar">
         <a className="mg-brand" href="/manage">pkviewer</a>
         <span className="mg-bar-note">Management</span>
         <span className="spacer" />
+        {admin ? <a className="btn" href="/admin">Admin</a> : null}
         <a className="btn" href={`${webConfig.publicOrigin}/`}>
           Public site <BoxArrowUpRight aria-hidden="true" />
         </a>

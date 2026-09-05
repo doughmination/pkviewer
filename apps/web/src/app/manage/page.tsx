@@ -112,8 +112,7 @@ function EmptyState() {
           </li>
         </ol>
         <p>
-          You never have to hand pkviewer a PluralKit token. Claiming is limited
-          while pkviewer is in beta.
+          You never have to hand pkviewer a PluralKit token.
         </p>
         <div className="mg-actions">
           <a className="btn primary" href="/manage/claim">

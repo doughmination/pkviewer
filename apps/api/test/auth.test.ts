@@ -21,7 +21,7 @@ import {
 } from "../src/auth/sessions.ts";
 import { openDb } from "../src/db/index.ts";
 import { migrate } from "../src/db/migrate.ts";
-import { canClaim, safeReturnTo } from "../src/http/routes/auth.ts";
+import { safeReturnTo } from "../src/http/routes/auth.ts";
 import { loadConfig } from "../src/config/index.ts";
 
 function freshDb() {
@@ -249,14 +249,14 @@ describe("oauth handshake", () => {
     expect(url.searchParams.get("code_verifier")).toBeNull();
   });
 
-  // Several URIs are registered so beta and production can both be live.
+  // Several URIs are registered so two domains can both be live.
   test("redirect URI is chosen from the registered list, matching the app origin", () => {
     const uris = [
       "https://prod.example/auth/discord/callback",
-      "https://beta.example/auth/discord/callback",
+      "https://staging.example/auth/discord/callback",
     ];
-    expect(pickRedirectUri(uris, "https://beta.example")).toBe(
-      "https://beta.example/auth/discord/callback",
+    expect(pickRedirectUri(uris, "https://staging.example")).toBe(
+      "https://staging.example/auth/discord/callback",
     );
   });
 
@@ -271,29 +271,6 @@ describe("oauth handshake", () => {
     expect(safeEqual("abc", "abc")).toBe(true);
     expect(safeEqual("abc", "abcd")).toBe(false);
     expect(safeEqual("abc", "abd")).toBe(false);
-  });
-});
-
-describe("beta claim gating", () => {
-  test("public viewing is never gated, but claiming is", () => {
-    const cfg = loadConfig({
-      ...baseEnv,
-      BETA_MODE: "true",
-      BETA_ALLOWED_DISCORD_IDS: "111,222",
-    });
-    expect(canClaim(cfg, ["111"])).toBe(true);
-    expect(canClaim(cfg, ["333"])).toBe(false);
-    expect(canClaim(cfg, [])).toBe(false);
-  });
-
-  test("an empty allow-list denies everyone while in beta", () => {
-    const cfg = loadConfig({ ...baseEnv, BETA_MODE: "true" });
-    expect(canClaim(cfg, ["111"])).toBe(false);
-  });
-
-  test("outside beta, claiming is open", () => {
-    const cfg = loadConfig({ ...baseEnv, BETA_MODE: "false" });
-    expect(canClaim(cfg, ["anyone"])).toBe(true);
   });
 });
 

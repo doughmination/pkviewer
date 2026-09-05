@@ -58,7 +58,19 @@ export const manageApi = {
   get: <T>(path: string) => call<T>(path),
   put: <T>(path: string, body: unknown) => call<T>(path, { method: "PUT", body }),
   post: <T>(path: string, body: unknown) => call<T>(path, { method: "POST", body }),
+  del: <T>(path: string) => call<T>(path, { method: "DELETE" }),
 };
+
+/**
+ * Whether the signed-in account administers pkviewer.
+ *
+ * Used only to decide whether to show a link. Every admin route re-checks it on
+ * the server, because a hidden link is not a permission boundary.
+ */
+export async function isPlatformAdmin(): Promise<boolean> {
+  const result = await manageApi.get<{ admin: boolean }>("/admin/whoami");
+  return result.ok && result.value.admin === true;
+}
 
 export type ManagedSystemSummary = {
   systemId: string;

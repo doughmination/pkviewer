@@ -50,8 +50,11 @@ export type SocialLink = {
 /** Resolved theme tokens, flat and dotted, ready to become CSS custom properties. */
 export type ResolvedTokens = Readonly<Record<string, string>>;
 
+import type { PublicBadge } from "./recognition.ts";
+
 export * from "./theme/index.ts";
 export * from "./social.ts";
+export * from "./recognition.ts";
 
 export type PageModel = {
   system: SystemView;
@@ -65,5 +68,11 @@ export type PageModel = {
    * the renderer except for the two layout values that genuinely are lengths.
    */
   composition: Readonly<Record<string, string>>;
-  beta: boolean;
+  /**
+   * Platform-issued recognition, already filtered to accepted grants.
+   *
+   * Present on system pages only. A badge recognises the system; repeating it
+   * on every member page would misattribute it.
+   */
+  badges: PublicBadge[];
 };

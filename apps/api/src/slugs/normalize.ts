@@ -6,10 +6,10 @@
  * cache keys, foreign keys and reservations are all keyed on PluralKit's UUID,
  * never on a slug and never on a HID.
  *
- * MVP restricts slugs to [a-z0-9-] (decision 4). That eliminates homograph
+ * Slugs are restricted to [a-z0-9-] (decision 4). That eliminates homograph
  * squatting outright rather than mitigating it — no Cyrillic "а" masquerading
- * as Latin "a" — and Unicode slugs can be added later behind a confusable
- * folding pass without changing any of this.
+ * as Latin "a" — and widening the set would require a confusable folding pass
+ * rather than a change here.
  */
 
 export type SlugScope = "system" | "member";

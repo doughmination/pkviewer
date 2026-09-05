@@ -31,7 +31,6 @@ export const webConfig = {
    * literal in the code.
    */
   docsUrl: (process.env["PUBLIC_DOCS_URL"] ?? "").replace(/\/+$/, ""),
-  beta: (process.env["BETA_MODE"] ?? "true") === "true",
 } as const;
 
 export function hostOf(origin: string): string {

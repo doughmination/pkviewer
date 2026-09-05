@@ -15,7 +15,7 @@ describe("config", () => {
   test("parses a valid development environment", () => {
     const cfg = loadConfig(base);
     expect(cfg.publicOrigin).toBe("http://localhost:3000");
-    expect(cfg.beta.enabled).toBe(false);
+    expect(cfg.signupEnabled).toBe(true);
     expect(cfg.pk.readRps).toBe(6);
   });
 
@@ -88,7 +88,7 @@ describe("config", () => {
     const cfg = loadConfig({
       ...base,
       DISCORD_REDIRECT_URIS:
-        "https://beta.example/auth/discord/callback, https://prod.example/auth/discord/callback",
+        "https://staging.example/auth/discord/callback, https://prod.example/auth/discord/callback",
     });
     expect(cfg.discord.redirectUris).toHaveLength(2);
   });
@@ -106,16 +106,16 @@ describe("user agent", () => {
   });
 
   // The UA must be identical across instances and over time. Deriving it from
-  // the deployment origin would change it on the beta -> production move, which
+  // the deployment origin would change it on any domain move, which
   // is the thing PluralKit uses it to avoid.
   test("does not depend on the deployment origin", () => {
-    const a = loadConfig({ ...base, PUBLIC_ORIGIN: "https://beta.example" });
+    const a = loadConfig({ ...base, PUBLIC_ORIGIN: "https://staging.example" });
     const b = loadConfig({ ...base, PUBLIC_ORIGIN: "https://production.example" });
     expect(a.pk.userAgent).toBe(b.pk.userAgent);
   });
 });
 
-describe("beta readiness", () => {
+describe("production readiness", () => {
   // An empty HMAC key would still "work", which is exactly the problem.
   test("an absent session secret becomes a random one outside production", () => {
     const a = loadConfig(base);

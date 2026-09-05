@@ -2,6 +2,7 @@ import { resolveComposition, type MemberView, type PageModel, type SocialLink, t
 import type { Db } from "../db/index.ts";
 import type { PkClient } from "../pk/client.ts";
 import type { PkMember, PkSystem } from "../pk/types.ts";
+import { publicBadgesFor } from "../manage/recognition.ts";
 import { activeSlugFor } from "../slugs/claim.ts";
 import { memberPath, resolveMemberRef, resolveSystemRef, systemPath } from "../slugs/resolve.ts";
 
@@ -229,7 +230,9 @@ export async function buildSystemPage(
       socials: socialsFor(deps.db, "system", systemId),
       tokens: resolveTokens(tokensFor(deps.db, "system", systemId), null),
       composition,
-      beta: false, // set by the route from config
+      // Accepted grants only, and system pages only: a badge recognises the
+      // system, not each of its members.
+      badges: publicBadgesFor(deps.db, systemId),
       canonicalPath: systemPath(system.id, slug),
     },
   };
@@ -283,7 +286,7 @@ export async function buildMemberPage(
       socials: socialsFor(deps.db, "member", memberId),
       tokens: resolveTokens(systemTokens, memberTokens),
       composition,
-      beta: false,
+      badges: [],
       canonicalPath: memberPath(system.id, systemSlug, member.id, memberSlug),
     },
   };

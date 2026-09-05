@@ -15,10 +15,10 @@ whose unfurler does not run JavaScript. Server-rendered `<meta>` is the point.
 
 **A3. No serverless.** SQLite needs a persistent disk. Single VPS or a volume.
 
-## The twelve
+## Core decisions
 
-1. **Domain is configuration.** `system.doughmination.gay` is the beta
-   deployment. No absolute pkviewer URL is ever persisted to the database; public
+1. **Domain is configuration.** `pkviewer.xyz` is the deployment; it moved there
+   from `system.doughmination.gay` without a code change, which is the point. No absolute pkviewer URL is ever persisted to the database; public
    URLs are composed at render time from config. Enforced by
    `scripts/check-no-hardcoded-origin.sh` in CI.
 2. ~~**User content gets its own origin.**~~ **Reversed.** pkviewer now serves
@@ -26,8 +26,9 @@ whose unfurler does not run JavaScript. Server-rendered `<meta>` is the point.
    replaces it.
 3. **Management lives under `/manage/...`**, never `/s/:system/...`, so a member
    slug can never collide with an app route.
-4. **MVP slugs are `[a-z0-9-]` only.** Eliminates homograph squatting outright
-   rather than mitigating it. Unicode can come later with confusable folding.
+4. **Slugs are `[a-z0-9-]` only.** Eliminates homograph squatting outright
+   rather than mitigating it. Widening the character set would require
+   confusable folding first.
 5. **Private members 404**, with nothing distinguishing them from a member that
    never existed. PluralKit's own 404 already behaves this way, and `PkNotFound`
    deliberately does not separate the two cases.
@@ -39,15 +40,15 @@ whose unfurler does not run JavaScript. Server-rendered `<meta>` is the point.
 8. **`/s/<pk-id>` and `/s/<slug>` both return 200**; the slug is canonical via
    `<link rel="canonical">`. Never a 301 for anything slug-based — permanent
    redirects outlive slug ownership.
-9. **Member logins are post-MVP**, but `grants(subject_type, subject_id)` already
-   models them. Adding member principals needs rows, not a migration.
+9. **Only system principals sign in.** `grants(subject_type, subject_id)` is
+   shaped to hold others, so widening it is rows rather than a migration.
 10. **PluralKit Dispatch is opt-in**, never required for claiming. A system has
     only one webhook URL, so enabling ours overwrites any other integration —
     this must be stated plainly in the UI.
 11. **Unclaiming**: 7-day slug reservation, 30-day configuration grace, reclaim
     within the window restores everything.
-12. **Custom CSS is v1.1.** MVP ships token-based theming only. The origin split
-    (O1) is still built now so CSS drops in later without a URL migration.
+12. **No custom CSS.** Theming is the token vocabulary and nothing else. See O1
+    for why enabling free-form CSS is not a small change.
 
 ## Origins
 
@@ -64,7 +65,8 @@ Everything a person visits is served from a single origin:
 | `/manage/...` | authenticated management UI |
 | `/s/...` | public system and member pages |
 
-Beta: `https://system.doughmination.gay`. Development: `http://system.localhost:3000`.
+Production: `https://pkviewer.xyz`, reached through a Cloudflare Tunnel.
+Development: `http://system.localhost:3000`.
 Configured as `PUBLIC_ORIGIN`, read at runtime, never baked into a build.
 
 The API stays internal and does not become browser-facing. The browser never
@@ -78,24 +80,22 @@ The `__Host-` cookie is pinned to one host, so a total compromise of a `/s/...`
 page could not reach the session cookie — it was never sent there. That was a
 structural guarantee, and consolidating gives it up.
 
-**It costs nothing today.** MVP has no user-authored executable content: no HTML,
+**It costs nothing today.** There is no user-authored executable content: no HTML,
 no JavaScript, no free-form CSS. Themes are a closed vocabulary of validated
 values (six-digit hex, declared enums, allow-listed font ids) and social links
 are `href` only, validated to http(s), never fetched. There is nothing on a
 public page that could exploit sharing an origin.
 
-**It matters for custom CSS (v1.1), which is what the split was insurance for.**
-When user CSS lands it will run on the same origin that holds the session
-cookie. CSS cannot read an httpOnly cookie, but it can exfiltrate visible DOM
+**It matters for custom CSS, which is what the split was insurance for.** User
+CSS would run on the same origin that holds the session cookie. CSS cannot read an httpOnly cookie, but it can exfiltrate visible DOM
 content through attribute selectors and `url()`, and it can cover the viewport
 with `position: fixed` — and a convincing fake sign-in overlay is *more*
 dangerous on an origin that genuinely serves `/login`.
 
-> **Consequence, recorded so it is not lost:** custom CSS must not simply be
-> enabled on `/s/...` under this architecture. It needs its own isolation —
-> rendering user CSS inside a sandboxed iframe with an opaque origin is the
-> natural answer, and reintroducing a separate host for that content is the
-> other. Decide this before building v1.1, not during.
+> **Do not simply switch custom CSS on.** Under one origin it needs isolation of
+> its own — a sandboxed iframe with an opaque origin, or a separate host for
+> user content. This is the constraint the origin split used to satisfy for
+> free, recorded here so enabling CSS is not mistaken for a small change.
 
 ### What now carries the weight instead
 
@@ -121,21 +121,25 @@ All served from the one origin (O1): `/`, `/login`, `/auth/...`, `/manage/...`,
 `/s/...`. **Documentation is a separate site** (`PUBLIC_DOCS_URL`) and is not
 served by this application; an empty value hides the links entirely.
 
-## Beta
+## Access
 
-- `X-Robots-Tag: noindex, nofollow` on every response while `BETA_MODE=true`.
-- Public viewing is never gated. **Claiming** is gated by
-  `BETA_ALLOWED_DISCORD_IDS`.
-- `SIGNUP_ENABLED` gates creating a *new* account only; existing testers can
-  always sign in.
-- Beta and production Discord redirect URIs are both registered ahead of the
-  domain move, so the cutover needs no flag day.
-- The old `/dispatch` endpoint stays alive across the move: PluralKit stores the
-  webhook URL on its side and may not follow redirects on POST.
+**B1. There is no beta gate.** `BETA_MODE` and `BETA_ALLOWED_DISCORD_IDS` are
+removed rather than defaulted off: a disabled flag still reads as a working
+gate, and the dead branches were the part most likely to be re-enabled by
+accident. Claiming is open to any signed-in account and is gated by proving
+control of the system, never by membership of a list. Public pages are
+indexable; `/manage` and `/admin` carry `noindex` both as metadata and as a
+header, since a `<meta>` tag cannot reach a non-HTML response. Guarded by
+`apps/web/test/no-beta.test.ts`, which walks the tree for the whole vocabulary.
+
+**B2. `SIGNUP_ENABLED` survives and defaults to open.** It gates creating a NEW
+account and nothing else, so an existing account can always sign in. It was the
+beta's companion switch and defaulted closed; with the allow-list gone, a
+deployment that sets nothing should let people in.
 
 ## Credentials
 
-**C1. No PluralKit token is ever persisted in MVP.** A PK token is full
+**C1. No PluralKit token is ever persisted.** A PK token is full
 read/write — it can delete members. Tier-3 claim verification uses one within a
 single request and discards it.
 
@@ -287,8 +291,8 @@ reserved slugs; anyone who was previously a manager must be re-invited.
 
 ## Theme vocabulary
 
-The product's public design API. Locked in step 8; changing it is a product
-decision, not a refactor. Lives in `packages/shared/src/theme/`.
+The product's public design API. Changing it is a product decision, not a
+refactor. Lives in `packages/shared/src/theme/`.
 
 **T1. Theme is how things look. Composition is what appears and how it is
 arranged.** A knob that changes which information is on the page, or where it
@@ -359,7 +363,7 @@ so a member has nothing to override there.
 
 ### The `length` and `boolean` types
 
-Both are implemented and tested in the validation layer. No MVP theme token uses
+Both are implemented and tested in the validation layer. No theme token uses
 `length` — every dimension is a named option instead, which is what keeps
 arbitrary values out. Tokens were not invented merely to exercise a type.
 
@@ -471,11 +475,11 @@ managers appear anywhere in the response.
 its 7-day hold immediately and stops resolving; it is not redirected, because a
 redirect would outlive ownership. The UI says this before the change, not after.
 
-## Audit findings (step 11)
+## Audit findings
 
 **A4. Nothing may be statically prerendered if it embeds a configured origin.**
-Prerendering bakes the BUILD-TIME origin into the HTML, so the beta-to-production
-move would need a rebuild rather than an env change — which is precisely what
+Prerendering bakes the BUILD-TIME origin into the HTML, so a domain move would
+need a rebuild rather than an env change — which is precisely what
 decision 1 forbids. `/`, `/docs` and the not-found page are therefore
 `force-dynamic`. Verified by building with one origin and serving with another.
 
@@ -566,9 +570,70 @@ hard-failed without them, which contradicted the documented read-only
 deployment and showed up only as an unhealthy container. Public pages work
 without sign-in; the warning names the three variables that enable it.
 
+## Recognition
+
+**R1. Admin is a grant over the platform, not a flag on an account.**
+`grants(account_id, subject_type='platform', subject_id='pkviewer', role='admin')`.
+Reusing the existing table means one authorization concept rather than two, and
+it produces the permission boundary structurally: every system-scoped check
+looks up a grant whose `subject_id` is that system, so a platform grant cannot
+satisfy it. **An admin administers pkviewer; an admin does not gain access to
+anyone's system, theme, address or links.** Migration 005's CHECK constraint
+refuses to store `admin` over a system, or `owner` over the platform, so this
+cannot regress into a code question. *Guarded by: "an admin grant does not
+confer access to any system", and by route tests asserting all fourteen `/admin`
+endpoints 404 for a signed-in non-admin.*
+
+**R2. The first admin comes from outside the application.** `bun run
+admin:grant <discord-id>`. Not an environment variable — that would re-promote
+whoever holds the id on every restart, with no record — and not an HTTP route,
+because there is nobody to authorise the first one. The script reads only
+`DATABASE_PATH`, so it works when the rest of the configuration is broken.
+
+**R3. A badge is platform-issued, and its appearance must be unreachable from
+the theme.** This is the whole value of the feature: a badge is worth something
+only because a system cannot produce one. Themes emit `--pkv-*`; badge CSS uses
+`--pkvb-*` and literals exclusively, and states its own font, size, weight and
+radius rather than inheriting them. A badge that read `--pkv-color-accent` could
+be recoloured to impersonate another badge, or set to the page background to
+hide one. Every badge links to `/badges`, which pkviewer owns, so imitation text
+has nowhere convincing to point. *Guarded by: "no badge rule reads a theme
+property", which parses the stylesheet by selector rather than by position.*
+
+**R4. Badge wording is data; badge appearance is code.** The catalogue is a
+table so a new badge type is an admin action rather than a deploy, but `icon`
+and `tone` are keys validated against a fixed list in `packages/shared/src/
+recognition.ts` before a row is written. No stored value ever becomes a colour,
+a class, markup or a URL. A row whose icon or tone is unrecognised is dropped at
+read time rather than rendered unstyled.
+
+**R5. A badge is an offer, not a fact.** `pending → accepted | declined`, plus
+`hidden` (recipient) and `revoked` (admin); `accepted` is the only state that
+renders, filtered in one query so a new caller cannot leak a pending offer. A
+badge appears on someone else's page and describes them to their visitors —
+"Girlfriend" discloses a relationship, and a vulnerability badge names someone in
+connection with a disclosure. A grant auto-accepts only when the granting admin
+also manages the subject, which is what makes the owner's own badge frictionless
+without special-casing it. A hidden badge is indistinguishable from one never
+granted.
+
+**R6. Badges attach to the system, credits attach to nobody.** A badge's subject
+is `systems.id`; member pages carry none, because a badge recognises the system
+and repeating it per member would misattribute it. Credits are a separate model
+entirely (`credit_sections` + `credits`) with a name, what they did, and an
+optional link — someone who emails a vulnerability report and never signs in
+still gets named. Sections are rows, so the public page contains no list of
+categories to fall out of date. Credit URLs follow the social-link rule: http(s)
+only, rendered as links, never fetched.
+
+**R7. Retiring a badge does not remove it from pages.** A retired catalogue
+entry cannot be granted again but keeps rendering where already accepted;
+deleting the row would silently strip a badge from someone's page because the
+catalogue was tidied.
+
 ## Guardrails
 
-No user JavaScript, ever. No arbitrary HTML. No custom CSS in MVP. No
+No user JavaScript, ever. No arbitrary HTML. No custom CSS. No
 server-side fetching of user-supplied URLs (SSRF) — social links are rendered as
 links and never fetched for previews or favicons. Public pages show only what
 PluralKit makes public. Fonts come from a fixed allow-list; no arbitrary font

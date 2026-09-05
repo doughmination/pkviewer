@@ -64,7 +64,7 @@ is `force-dynamic` specifically to keep that true.
 | `SESSION_SECRET` *secret* | **production** | ≥32 chars. `openssl rand -base64 32`. Outside production an ephemeral one is generated per start, with a warning. |
 | `DISCORD_CLIENT_ID` | **production** | From the Discord developer portal. |
 | `DISCORD_CLIENT_SECRET` *secret* | **production** | Same. |
-| `DISCORD_REDIRECT_URIS` | **production** | Comma-separated. **Register the beta and production URIs together** so the domain move is a cutover, not a flag day. Each must be `<public origin>/auth/discord/callback` and registered identically in Discord. |
+| `DISCORD_REDIRECT_URIS` | **production** | Comma-separated. **Register both the old and new URIs together** before a domain move, so it is a cutover rather than a flag day. Each must be `<public origin>/auth/discord/callback` and registered identically in Discord. |
 
 Without Discord credentials the app still runs and every public page works —
 nobody can sign in, and `/auth/discord/start` answers 503. That is a legitimate
@@ -83,15 +83,18 @@ front, and the container itself speaks http behind it. Session cookies are
 | `API_PORT` | optional | Default `3001`. |
 | `DATABASE_PATH` | optional | Default `./data/pkviewer.db`. **Relative paths resolve against the API process's working directory**, which is `apps/api` under `bun run dev` — so the dev database is at `apps/api/data/pkviewer.db`. **Use an absolute path in production.** |
 
-### Beta flags
+### Other flags
 
 | Variable | Default | Notes |
 |---|---|---|
-| `BETA_MODE` | `false` | When true: `noindex` on everything, and claiming is limited to the allow-list. |
-| `SIGNUP_ENABLED` | `false` | Gates creating a **new** account only. Turning it off never locks existing testers out. |
-| `BETA_ALLOWED_DISCORD_IDS` | empty | Comma-separated Discord user IDs permitted to claim a system while in beta. **Empty means nobody can claim.** |
+| `SIGNUP_ENABLED` | `true` | Gates creating a **new** account only. Turning it off never locks an existing account out of what it already has. |
 | `API_PORT` | `3001` | |
 | `NODE_ENV` | `development` | `production` turns on the stricter checks above. |
+
+pkviewer is no longer in beta. `BETA_MODE` and `BETA_ALLOWED_DISCORD_IDS` are
+gone rather than defaulted off — setting them now does nothing. Claiming is open
+to any signed-in account, gated by proving control of the system rather than by
+membership of a list, and public pages are indexable.
 
 ### Minimum production set
 
@@ -106,9 +109,7 @@ SESSION_SECRET=<openssl rand -base64 32>
 DISCORD_CLIENT_ID=<from Discord>
 DISCORD_CLIENT_SECRET=<from Discord>
 DISCORD_REDIRECT_URIS=https://system.example/auth/discord/callback
-BETA_MODE=true
 SIGNUP_ENABLED=true
-BETA_ALLOWED_DISCORD_IDS=<your Discord user id>
 ```
 
 Under Docker, `INTERNAL_API_ORIGIN` and `DATABASE_PATH` are set by compose
@@ -227,6 +228,35 @@ IP: Docker publishes through the `DOCKER-USER` chain and `nat PREROUTING`, which
 run **before** the `INPUT` chain `ufw` and `firewalld` manage, so `ufw deny 3000`
 does nothing. Restricting it then means a security group, or
 `iptables -I DOCKER-USER -p tcp --dport 3000 ! -s <source> -j DROP`.
+
+## Administrators
+
+Admin is a grant row, not an environment variable. `ADMIN_*` does not exist, and
+neither does an HTTP route that creates the first one — there would be nobody to
+authorise it, and a variable would silently re-promote whoever held that Discord
+id on every restart, with no record of when or by whom.
+
+```bash
+bun run admin:list
+bun run admin:grant <discord-user-id>
+bun run admin:revoke <discord-user-id>
+```
+
+Run from the repository root, so `.env` is picked up. Under Docker:
+
+```bash
+docker compose exec api bun run scripts/admin.ts list
+```
+
+The account must exist first: sign in with that Discord account once, then grant
+it. Only the database path is read, so this still works when Discord
+credentials are missing — which is when you are most likely to need it.
+
+**What an admin can do** is grant badges and edit the credits page. **What an
+admin cannot do** is touch anyone's system, theme, address or links: system
+access is a grant whose subject is that system, and a platform grant can never
+satisfy that lookup. The database refuses to store `admin` over a system at all
+(migration 005), so this is a schema constraint rather than a convention.
 
 ## Publishing images
 

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { buildCreditsPage, listBadges } from "../../admin/index.ts";
 import type { Config } from "../../config/index.ts";
 import type { Db } from "../../db/index.ts";
 import type { PkClient } from "../../pk/client.ts";
@@ -11,14 +12,14 @@ type Deps = { cfg: Config; db: Db; pk: PkClient; now?: () => number };
  * browsing never depends on an account.
  */
 export function publicRoutes(deps: Deps): Hono {
-  const { cfg, db, pk } = deps;
+  const { db, pk } = deps;
   const app = new Hono();
   const pageDeps = { db, pk, ...(deps.now ? { now: deps.now } : {}) };
 
   app.get("/systems/:ref", async (c) => {
     const result = await buildSystemPage(pageDeps, c.req.param("ref"));
     if (!result.ok) return c.json({ error: result.reason }, statusFor(result.reason));
-    return c.json({ ...result.value, beta: cfg.beta.enabled });
+    return c.json(result.value);
   });
 
   app.get("/systems/:ref/members/:memberRef", async (c) => {
@@ -28,8 +29,17 @@ export function publicRoutes(deps: Deps): Hono {
       c.req.param("memberRef"),
     );
     if (!result.ok) return c.json({ error: result.reason }, statusFor(result.reason));
-    return c.json({ ...result.value, beta: cfg.beta.enabled });
+    return c.json(result.value);
   });
+
+  /**
+   * The credits page and the badge glossary.
+   *
+   * Both are platform-owned content with no subject and no session, so they sit
+   * beside the other public reads rather than behind the management plane.
+   */
+  app.get("/credits", (c) => c.json({ sections: buildCreditsPage(db) }));
+  app.get("/badges", (c) => c.json({ badges: listBadges(db) }));
 
   return app;
 }

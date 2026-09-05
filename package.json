@@ -15,7 +15,10 @@
     "check": "bun run check:domain && bun run typecheck && bun test",
     "dev": "bun run scripts/dev.ts",
     "dev:web": "bun run --cwd apps/web dev",
-    "build": "bun run --cwd apps/web build"
+    "build": "bun run --cwd apps/web build",
+    "admin:list": "bun run apps/api/scripts/admin.ts list",
+    "admin:grant": "bun run apps/api/scripts/admin.ts grant",
+    "admin:revoke": "bun run apps/api/scripts/admin.ts revoke"
   },
   "devDependencies": {
     "@types/bun": "latest",

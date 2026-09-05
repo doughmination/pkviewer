@@ -11,8 +11,8 @@ pages look.
 with or endorsed by the PluralKit project.** It reads PluralKit's public API and
 shows only information PluralKit already makes public.
 
-Status: **pre-beta.** The feature set is deliberately small and things will
-change.
+Live at **[pkviewer.xyz](https://pkviewer.xyz)**. The feature set is
+deliberately small.
 
 ---
 
@@ -133,7 +133,7 @@ no local database.
 
 ```bash
 cp .env.example .env      # fill in real values
-docker compose up -d --build
+docker compose pull && docker compose up -d
 ```
 
 Two containers: `api` (Bun, owns SQLite) and `web` (Node, renders and proxies).

@@ -76,8 +76,6 @@ const BASE_HEADERS = [
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
 ];
 
-const isBeta = process.env["BETA_MODE"] !== "false";
-
 const config: NextConfig = {
   reactStrictMode: true,
 
@@ -123,13 +121,22 @@ const config: NextConfig = {
       };
     }
 
-    // Belt and braces with the robots metadata: this also covers responses that
-    // are not HTML, which a <meta> tag cannot reach.
-    if (isBeta) {
-      headers.push({ key: "X-Robots-Tag", value: "noindex, nofollow" });
-    }
+    /**
+     * Public pages are indexable; the control planes are not.
+     *
+     * This was once a site-wide noindex driven by a beta flag. That flag is
+     * gone, so /s/... pages should be findable — but /manage and /admin must
+     * never be. The layouts already set robots metadata; this is
+     * belt and braces, and it also covers responses that are not HTML, which a
+     * <meta> tag cannot reach.
+     */
+    const noIndex = { key: "X-Robots-Tag", value: "noindex, nofollow" };
 
-    return [{ source: "/:path*", headers }];
+    return [
+      { source: "/:path*", headers },
+      { source: "/manage/:path*", headers: [noIndex] },
+      { source: "/admin/:path*", headers: [noIndex] },
+    ];
   },
 };
 

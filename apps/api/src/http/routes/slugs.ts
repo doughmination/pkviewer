@@ -32,8 +32,8 @@ export function slugRoutes(deps: Deps): Hono {
    * Resolves the caller's authority over a subject.
    *
    * Member slugs are authorised through the member's SYSTEM: members are not
-   * independent principals in MVP (decision 9), and the grants table already
-   * models them for when they become one.
+   * independent principals (decision 9), and the grants table is already shaped
+   * to hold them if that changes.
    */
   const authorize = (
     c: Context,

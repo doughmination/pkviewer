@@ -14,6 +14,7 @@ import {
   saveTheme,
   type SystemRow,
 } from "../../manage/index.ts";
+import { offeredBadgesFor, respondToBadge, type RespondAction } from "../../manage/recognition.ts";
 import type { PkClient } from "../../pk/client.ts";
 import { PkError } from "../../pk/errors.ts";
 import { activeSlugFor } from "../../slugs/claim.ts";
@@ -244,6 +245,39 @@ export function manageRoutes(deps: Deps): Hono {
 
     audit(db, now(), ctx.accountId, "socials.member.saved", found.memberId);
     return c.json({ ok: true, saved: result.saved });
+  });
+
+  /**
+   * Recognition offered to this system.
+   *
+   * The recipient's half of a badge. Granting is an admin power; deciding
+   * whether it shows on your own page is not, so it lives here behind the
+   * ordinary system grant rather than behind the admin plane.
+   */
+  app.get("/systems/:systemId/badges", (c) => {
+    const ctx = withSystem(c);
+    if (ctx instanceof Response) return ctx;
+    return c.json({ badges: offeredBadgesFor(db, ctx.system.id) });
+  });
+
+  app.post("/systems/:systemId/badges/:badgeId", async (c) => {
+    const ctx = withSystem(c);
+    if (ctx instanceof Response) return ctx;
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const action = body["action"];
+    if (action !== "accept" && action !== "decline" && action !== "hide" && action !== "show") {
+      return c.json({ error: "invalid_action" }, 422);
+    }
+    const result = respondToBadge(
+      db,
+      ctx.system.id,
+      c.req.param("badgeId"),
+      action as RespondAction,
+      now(),
+      ctx.accountId,
+    );
+    if (!result.ok) return c.json({ error: result.reason }, result.reason === "not_found" ? 404 : 409);
+    return c.json({ ok: true, state: result.state });
   });
 
   return app;

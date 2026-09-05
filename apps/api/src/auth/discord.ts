@@ -137,9 +137,9 @@ export class DiscordClient {
 /**
  * Chooses which registered redirect URI to use for this request.
  *
- * Several are registered at once so the beta and the eventual production domain
- * can both be live in the Discord developer portal, making the domain move a
- * cutover rather than a flag day. We must send back exactly one of the
+ * Several are registered at once so more than one domain can be live in the
+ * Discord developer portal, making a domain move a cutover rather than a flag
+ * day. We must send back exactly one of the
  * registered values, so an unknown host falls back to the configured app origin
  * rather than reflecting whatever the request claimed.
  */

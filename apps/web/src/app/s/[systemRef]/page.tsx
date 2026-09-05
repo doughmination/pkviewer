@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PeopleFill, PersonCircle } from "react-bootstrap-icons";
+import { BadgeRow } from "@/components/Badges.tsx";
 import { MemberDirectory } from "@/components/MemberDirectory.tsx";
 import { SiteDisclosure, StaleNotice } from "@/components/Notices.tsx";
 import { SocialLinks } from "@/components/SocialLinks.tsx";
@@ -62,7 +63,7 @@ export default async function SystemPage({ params }: Params) {
     );
   }
 
-  const { system, members, socials, tokens, composition, beta } = result.value;
+  const { system, members, socials, tokens, composition, badges } = result.value;
   const name = system.name ?? system.hid;
   const theme = buildPageTheme(tokens, null, composition);
   const showBanner = composition["banner.display"] !== "hidden";
@@ -104,6 +105,8 @@ export default async function SystemPage({ params }: Params) {
         </div>
       </header>
 
+      <BadgeRow badges={badges} />
+
       {system.description ? (
         <section className="prose">
           <p style={{ whiteSpace: "pre-wrap" }}>{system.description}</p>
@@ -117,7 +120,7 @@ export default async function SystemPage({ params }: Params) {
         <MemberDirectory members={members} composition={composition} />
       </section>
 
-      <SiteDisclosure beta={beta} />
+      <SiteDisclosure />
     </main>
   );
 }

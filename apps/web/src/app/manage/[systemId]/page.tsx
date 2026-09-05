@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ClockHistory, ExclamationTriangle, InfoCircle, PencilSquare } from "react-bootstrap-icons";
+import { BadgeOffers } from "@/components/manage/BadgeOffers.tsx";
 import { PublicUrl } from "@/components/manage/PublicUrl.tsx";
 import { Note, PageHeader, Section } from "@/components/manage/Shell.tsx";
 import { manageApi, type SystemOverview } from "@/lib/manage-api.ts";
+import type { OfferedBadge } from "@pkviewer/shared";
 import { webConfig } from "@/lib/config.ts";
 
 export const metadata: Metadata = { title: "Overview" };
@@ -17,6 +19,10 @@ export default async function OverviewPage({
   const result = await manageApi.get<SystemOverview>(`/manage/systems/${systemId}`);
   if (!result.ok) notFound();
   const system = result.value;
+
+  const offers = await manageApi.get<{ badges: OfferedBadge[] }>(
+    `/manage/systems/${systemId}/badges`,
+  );
 
   const publicUrl = `${webConfig.publicOrigin}${system.publicPath}`;
   const idUrl = `${webConfig.publicOrigin}/s/${system.pkSystemHid}`;
@@ -89,6 +95,8 @@ export default async function OverviewPage({
           </div>
         </dl>
       </Section>
+
+      {offers.ok ? <BadgeOffers systemId={systemId} badges={offers.value.badges} /> : null}
 
       <Section
         title="Data freshness"
