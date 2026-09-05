@@ -41,7 +41,15 @@ export const BADGE_ICON_IDS: readonly BadgeIconId[] = [
  * A closed palette, not a colour. An admin picks a tone name; the stylesheet
  * decides what that looks like, and the theme cannot reach it.
  */
-export type BadgeToneId = "gold" | "rose" | "violet" | "amber" | "teal" | "blue" | "slate";
+export type BadgeToneId =
+  | "gold"
+  | "rose"
+  | "violet"
+  | "amber"
+  | "teal"
+  | "blue"
+  | "green"
+  | "slate";
 
 export const BADGE_TONE_IDS: readonly BadgeToneId[] = [
   "gold",
@@ -50,6 +58,7 @@ export const BADGE_TONE_IDS: readonly BadgeToneId[] = [
   "amber",
   "teal",
   "blue",
+  "green",
   "slate",
 ];
 

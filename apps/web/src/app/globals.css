@@ -263,6 +263,7 @@ a.pkvb:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .pkvb[data-tone="amber"]  { --pkvb-bg: #94591A; }
 .pkvb[data-tone="teal"]   { --pkvb-bg: #14706B; }
 .pkvb[data-tone="blue"]   { --pkvb-bg: #2A5CA8; }
+.pkvb[data-tone="green"]  { --pkvb-bg: #2C6B42; }
 .pkvb[data-tone="slate"]  { --pkvb-bg: #4A5261; }
 
 .badge-glossary { display: grid; gap: var(--sp-4); padding: 0; margin: 0; list-style: none; }

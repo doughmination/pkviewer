@@ -14,9 +14,10 @@
  * The account must already exist: sign in with Discord once first.
  */
 
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { grantAdmin, isAdmin, listAdmins, revokeAdmin } from "../src/admin/index.ts";
 import { openDb } from "../src/db/index.ts";
-import { migrate } from "../src/db/migrate.ts";
 
 const [action, discordId] = process.argv.slice(2);
 
@@ -25,11 +26,24 @@ const [action, discordId] = process.argv.slice(2);
  *
  * Listing administrators should not fail because Discord credentials are
  * absent — this has to work on a broken deployment, which is exactly when
- * someone needs it. Run from the repository root so `.env` is picked up.
+ * someone needs it.
+ *
+ * The file MUST already exist. A relative DATABASE_PATH resolves against the
+ * current directory, so running this from the wrong place would otherwise
+ * create an empty database, migrate it, and report a cheerful success against a
+ * file the API has never opened. Refusing is the difference between a confusing
+ * afternoon and an error message.
  */
-const databasePath = process.env["DATABASE_PATH"] ?? "./data/pkviewer.db";
+const databasePath = resolve(process.env["DATABASE_PATH"] ?? "./data/pkviewer.db");
+if (!existsSync(databasePath)) {
+  console.error(`No database at ${databasePath}`);
+  console.error(
+    "Set DATABASE_PATH, or run from the directory the API runs from. This command\n" +
+      "never creates a database: doing so would silently target the wrong file.",
+  );
+  process.exit(1);
+}
 const db = openDb(databasePath);
-migrate(db);
 
 function accountFor(id: string): string | null {
   return (
@@ -53,6 +67,7 @@ function describe(accountId: string): string {
 
 switch (action) {
   case "list": {
+    console.log(`database: ${databasePath}`);
     const admins = listAdmins(db);
     if (admins.length === 0) {
       console.log("No administrators. Grant one with: bun run admin:grant <discord-user-id>");
@@ -78,6 +93,7 @@ switch (action) {
     }
     grantAdmin(db, accountId, Date.now());
     console.log(`${describe(accountId)} is now an administrator.`);
+    console.log(`database: ${databasePath}`);
     break;
   }
 

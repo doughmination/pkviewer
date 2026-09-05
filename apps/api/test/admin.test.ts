@@ -264,15 +264,36 @@ describe("badge consent", () => {
 });
 
 describe("the badge catalogue", () => {
-  test("ships the six seeded badges", () => {
+  test("ships the seeded badges", () => {
     expect(listBadges(db).map((b) => b.id).sort()).toEqual([
       "bug-hunter",
       "contributor",
       "friend",
       "girlfriend",
       "owner",
+      "pk-dev",
       "security",
     ]);
+  });
+
+  /**
+   * pkviewer is a third-party project and says so on every public page. A badge
+   * naming another project is the one place that disclaimer could quietly stop
+   * being true, so the badge that names PluralKit has to carry it too — the
+   * description is what /badges shows and what the badge's tooltip says.
+   */
+  test("the PluralKit badge states the lack of affiliation", () => {
+    const badge = listBadges(db).find((b) => b.id === "pk-dev");
+    expect(badge).toBeDefined();
+    expect(badge!.description).toMatch(/not affiliated with or endorsed by/i);
+  });
+
+  test("seeding again is a no-op rather than a failure", () => {
+    // Migrations are forward-only and run on every start; a second application
+    // must not error or duplicate.
+    const before = listBadges(db, { includeRetired: true }).length;
+    migrate(db);
+    expect(listBadges(db, { includeRetired: true })).toHaveLength(before);
   });
 
   // Icon and tone decide what a badge LOOKS like. Accepting arbitrary values
