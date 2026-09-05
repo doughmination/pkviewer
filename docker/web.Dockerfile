@@ -1,26 +1,33 @@
-# The web tier: Next.js on Node. Renders, and proxies to the API.
+# The web tier: Next.js. Renders, and proxies to the API.
 #
 # Built from the repository root: `docker build -f docker/web.Dockerfile .`
+#
+# Built with Bun — the project's own toolchain, and already how `bun run build`
+# works locally — then run on Node, which is what Next's standalone server
+# expects. That avoids installing Bun through npm in two separate stages, which
+# cost about 70 seconds of every build.
 
-FROM node:22-alpine AS deps
+FROM oven/bun:1.2-alpine AS deps
 WORKDIR /app
-RUN corepack enable && npm i -g bun@1.2 || true
 COPY package.json bun.lock ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
-RUN bun install
+# Frozen: a production image installs exactly what was tested, rather than
+# resolving fresh versions at build time. Drop `--frozen-lockfile` only if the
+# lockfile is genuinely out of date, and then commit the updated one.
+RUN bun install --frozen-lockfile
 
-FROM node:22-alpine AS build
+FROM oven/bun:1.2-alpine AS build
 WORKDIR /app
-RUN npm i -g bun@1.2 || true
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+# The whole installed tree — see the note in api.Dockerfile about why individual
+# node_modules paths are not safe to name.
+COPY --from=deps /app ./
 COPY . .
 
 # Origins are NOT baked in. Every page that embeds one is force-dynamic and
 # reads configuration at request time, so the build runs with placeholders and
-# the running container is given the real values. That is what makes moving
+# the running container is given the real values. That is what keeps moving
 # domains a config change rather than a rebuild.
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
@@ -36,10 +43,13 @@ WORKDIR /app
 RUN addgroup -S pkviewer && adduser -S -G pkviewer pkviewer
 
 # Standalone output carries only the modules the server actually needs, so the
-# runtime image contains neither the monorepo nor its node_modules.
+# runtime image contains neither the monorepo nor its node_modules. Its layout
+# is rooted at the workspace, so the entrypoint is apps/web/server.js.
 COPY --from=build --chown=pkviewer:pkviewer /app/apps/web/.next/standalone ./
 COPY --from=build --chown=pkviewer:pkviewer /app/apps/web/.next/static ./apps/web/.next/static
-COPY --from=build --chown=pkviewer:pkviewer /app/apps/web/public ./apps/web/public
+
+# There is deliberately no `public` directory in this project, and COPYing a
+# path that does not exist fails the build.
 
 USER pkviewer
 
@@ -50,5 +60,4 @@ ENV NODE_ENV=production \
 
 EXPOSE 3000
 
-# Standalone emits a server entrypoint at the traced workspace path.
 CMD ["node", "apps/web/server.js"]

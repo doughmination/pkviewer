@@ -10,7 +10,10 @@ COPY package.json bun.lock ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
-RUN bun install
+# Frozen: a production image installs exactly what was tested, rather than
+# resolving fresh versions at build time. Drop `--frozen-lockfile` only if the
+# lockfile is genuinely out of date, and then commit the updated one.
+RUN bun install --frozen-lockfile
 
 FROM oven/bun:1.2-alpine AS runtime
 WORKDIR /app
@@ -19,8 +22,16 @@ WORKDIR /app
 RUN addgroup -S pkviewer && adduser -S -G pkviewer pkviewer \
     && mkdir -p /data && chown pkviewer:pkviewer /data
 
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
+# The WHOLE installed tree, not individual node_modules paths.
+#
+# Bun decides where to place workspace dependencies, and that decision depends
+# on what else is present: with only manifests copied it hoists everything to
+# the root, so `apps/api/node_modules` may not exist at all. Copying the tree
+# works whatever it chose.
+COPY --from=deps /app ./
+
+# Source overlays the install. `.dockerignore` excludes node_modules, so these
+# add files without disturbing what was installed above.
 COPY package.json bun.lock ./
 COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
@@ -32,9 +43,9 @@ ENV NODE_ENV=production \
     API_PORT=3001 \
     API_HOST=0.0.0.0
 
-# The port is exposed to the compose network only and never published to the
-# host. That network boundary is what replaces the loopback bind: the API stays
-# unreachable from outside, which the architecture requires.
+# Exposed to the compose network only, never published to the host. That
+# boundary is what replaces the loopback bind: the API stays unreachable from
+# outside, which the architecture requires.
 EXPOSE 3001
 
 WORKDIR /app/apps/api
