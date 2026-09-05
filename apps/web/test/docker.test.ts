@@ -16,6 +16,28 @@ const dockerfiles = ["docker/api.Dockerfile", "docker/web.Dockerfile"].map((p) =
   text: readFileSync(join(root, p), "utf8"),
 }));
 
+/**
+ * Parsed, not scraped.
+ *
+ * These assertions used to run regexes over the raw text, which cannot tell a
+ * valid compose file from an invalid one. A healthcheck script containing
+ * `r.ok ? 0 : 1` parsed as a YAML *mapping* rather than a string -- every
+ * regex test still passed, and `docker compose up` rejected the file on the
+ * server. Parsing is what catches that class of thing.
+ */
+const compose = Bun.YAML.parse(
+  readFileSync(join(root, "docker-compose.yml"), "utf8"),
+) as {
+  services: Record<string, Record<string, unknown>>;
+  volumes?: Record<string, unknown>;
+};
+
+const services = Object.entries(compose.services).map(([name, svc]) => ({
+  name,
+  svc,
+  image: svc["image"] as string,
+}));
+
 function bunTags(text: string): string[] {
   return [...text.matchAll(/FROM oven\/bun:([^\s]+)/g)].map((m) => m[1]!);
 }
@@ -50,18 +72,33 @@ describe("container toolchain", () => {
   // The API is internal: publishing its port would put the management API on
   // the host network, which the architecture forbids.
   test("compose exposes the API without publishing it", () => {
-    const compose = readFileSync(join(root, "docker-compose.yml"), "utf8");
-    const api = compose.slice(compose.indexOf("  api:"), compose.indexOf("  web:"));
-    expect(api).toContain("expose:");
-    expect(api).not.toMatch(/^\s+ports:/m);
+    expect(compose.services["api"]!["expose"]).toEqual(["3001"]);
+    expect(compose.services["api"]!["ports"]).toBeUndefined();
   });
 
-  // Published on every interface deliberately: the proxy is not on this host's
-  // loopback. Docker bypasses ufw, so nothing here can enforce the boundary --
-  // this only pins the port the proxy is configured against.
+  // Published on every interface deliberately: Cloudflare Tunnel forwards here
+  // and a loopback bind is unreachable from another container or machine.
   test("the web tier publishes 3000", () => {
-    const compose = readFileSync(join(root, "docker-compose.yml"), "utf8");
-    expect(compose).toContain('"3000:3000"');
+    expect(compose.services["web"]!["ports"]).toEqual(["3000:3000"]);
+  });
+
+  /**
+   * Compose rejects a healthcheck whose `test` entries are not all strings, and
+   * YAML turns an unquoted ` : ` into a mapping -- so the obvious way to write
+   * `r.ok ? 0 : 1` produces a file that only fails at `docker compose up`.
+   */
+  test("the healthcheck is a list of strings", () => {
+    const test = (compose.services["api"]!["healthcheck"] as Record<string, unknown>)["test"];
+    expect(Array.isArray(test)).toBe(true);
+    for (const part of test as unknown[]) expect(typeof part).toBe("string");
+  });
+
+  test("the healthcheck script is valid JavaScript", () => {
+    const test = (compose.services["api"]!["healthcheck"] as Record<string, unknown>)[
+      "test"
+    ] as string[];
+    expect(test.slice(0, 3)).toEqual(["CMD", "bun", "-e"]);
+    expect(() => new Function(test[3]!)).not.toThrow();
   });
 });
 
@@ -73,50 +110,39 @@ describe("container toolchain", () => {
  */
 describe("published images", () => {
   const workflow = readFileSync(join(root, ".github/workflows/images.yml"), "utf8");
-  const compose = readFileSync(join(root, "docker-compose.yml"), "utf8");
-  // Only the services block: top-level `volumes:` also holds two-space keys.
-  const services = compose.slice(compose.indexOf("services:") + 9).split(/^\S/m)[0]!;
-
   const account = workflow.match(/DOCKERHUB_USER: (\S+)/)?.[1];
   // Just the build matrix: `- name:` also introduces every workflow step.
   const matrix = workflow.slice(workflow.indexOf("include:")).split(/^ {4}\w/m)[0]!;
   const built = [...matrix.matchAll(/- name: ([\w-]+)$/gm)].map(
     (m) => `${account}/pkviewer-${m[1]!}`,
   );
-  const run = [...services.matchAll(/image: (\S+?):latest$/gm)].map((m) => m[1]!);
 
   test("CI publishes exactly the images compose runs", () => {
-    // Both sides come from regexes, so an empty match on both would otherwise
-    // agree vacuously.
+    // `built` comes from a regex, so an empty match on both sides would
+    // otherwise agree vacuously.
     expect(built.length).toBeGreaterThan(0);
-    expect(new Set(built)).toEqual(new Set(run));
-  });
-
-  test("every service runs a published image", () => {
-    const names = [...services.matchAll(/^ {2}([\w-]+):$/gm)].map((m) => m[1]!);
-    expect(run).toHaveLength(names.length);
+    expect(new Set(built)).toEqual(new Set(services.map((s) => s.image.split(":")[0])));
   });
 
   // Compose runs images, it does not build them. A `build:` section would let a
   // server quietly compile whatever source is lying around instead of running
   // the pinned image, which is the failure this whole arrangement avoids.
-  test("compose never builds", () => {
-    expect(services).not.toContain("build:");
-    expect(services).not.toContain("dockerfile:");
+  test("no service builds", () => {
+    for (const s of services) expect(s.svc["build"], s.name).toBeUndefined();
   });
 
-  // A pinned tag is only a pin if a restart actually fetches it.
-  test("every service pulls on every start", () => {
-    expect([...services.matchAll(/^ {4}pull_policy: always$/gm)]).toHaveLength(run.length);
+  // A moving tag is only usable if a restart actually fetches it.
+  test("every service runs :latest and pulls on every start", () => {
+    for (const s of services) {
+      expect(s.image, s.name).toEndWith(":latest");
+      expect(s.svc["pull_policy"], s.name).toBe("always");
+    }
   });
 
   // Nothing about which image runs is configurable, so there is no server-side
   // variable that can drift from what CI publishes.
   test("image references are fully literal", () => {
-    expect(run.length).toBeGreaterThan(0);
-    for (const line of services.match(/^ {4}image: .*$/gm) ?? []) {
-      expect(line).not.toContain("$");
-    }
+    for (const s of services) expect(s.image, s.name).not.toContain("$");
   });
 
   // A password would work and would be wrong: a token is scoped and can be
