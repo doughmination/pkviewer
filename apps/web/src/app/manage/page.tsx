@@ -118,11 +118,9 @@ function EmptyState() {
           <a className="btn primary" href="/manage/claim">
             Claim a system <ArrowRight aria-hidden="true" />
           </a>
-          {webConfig.docsUrl ? (
-            <a className="btn quiet" href={webConfig.docsUrl} rel="noopener">
-              Read about claiming <BoxArrowUpRight aria-hidden="true" />
-            </a>
-          ) : null}
+          <a className="btn quiet" href={webConfig.docsUrl} rel="noopener">
+            Read about claiming <BoxArrowUpRight aria-hidden="true" />
+          </a>
         </div>
       </div>
     </div>

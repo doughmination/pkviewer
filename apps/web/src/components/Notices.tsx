@@ -19,11 +19,9 @@ export function SiteDisclosure() {
       <p className="site-footer-links">
         <a href="/credits">Credits</a>
         <a href="/badges">Badges</a>
-        {webConfig.docsUrl ? (
-          <a href={webConfig.docsUrl} rel="noopener">
-            Documentation <BoxArrowUpRight aria-hidden="true" />
-          </a>
-        ) : null}
+        <a href={webConfig.docsUrl} rel="noopener">
+          Docs &amp; support <BoxArrowUpRight aria-hidden="true" />
+        </a>
       </p>
     </footer>
   );

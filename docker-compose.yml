@@ -92,7 +92,6 @@ services:
       HOSTNAME: 0.0.0.0
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in .env}
       INTERNAL_API_ORIGIN: http://api:3001
-      PUBLIC_DOCS_URL: ${PUBLIC_DOCS_URL:-}
     depends_on:
       api:
         condition: service_healthy

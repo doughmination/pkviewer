@@ -30,6 +30,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <span className="mg-bar-note">Administration</span>
         <span className="spacer" />
         <a className="btn" href="/manage">Management</a>
+        <a className="btn" href={webConfig.docsUrl} rel="noopener">
+          Docs <BoxArrowUpRight aria-hidden="true" />
+        </a>
         <a className="btn" href={`${webConfig.publicOrigin}/`}>
           Public site <BoxArrowUpRight aria-hidden="true" />
         </a>

@@ -66,13 +66,11 @@ export default function LandingPage() {
           Sign in with Discord <ArrowRight aria-hidden="true" />
         </a>
       </p>
-      {webConfig.docsUrl ? (
-        <p>
-          <a href={webConfig.docsUrl} rel="noopener">
-            Read the documentation <BoxArrowUpRight aria-hidden="true" />
-          </a>
-        </p>
-      ) : null}
+      <p>
+        <a href={webConfig.docsUrl} rel="noopener">
+          Read the documentation <BoxArrowUpRight aria-hidden="true" />
+        </a>
+      </p>
 
       <SiteDisclosure />
     </main>

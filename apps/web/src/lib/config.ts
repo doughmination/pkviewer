@@ -26,11 +26,17 @@ export const webConfig = {
   /**
    * Where the documentation lives.
    *
-   * Documentation is a separate site, not part of this application. It is a
-   * deployment hostname like any other, so it is configuration rather than a
-   * literal in the code.
+   * Hardcoded, unlike pkviewer's own origin. The domain-portability rule exists
+   * so pkviewer can move hosts without a rebuild; this is not pkviewer's host,
+   * it is a fixed destination pkviewer links to — the same category as a
+   * repository URL. Making it configuration only meant it could be forgotten,
+   * which is exactly what happened: the option existed, nothing documented it,
+   * and no docs link ever appeared.
+   *
+   * It is also the route to support: the docs site's own footer carries the
+   * Discord, Matrix and repository links.
    */
-  docsUrl: (process.env["PUBLIC_DOCS_URL"] ?? "").replace(/\/+$/, ""),
+  docsUrl: "https://docs.doughmination.gay",
 } as const;
 
 export function hostOf(origin: string): string {
