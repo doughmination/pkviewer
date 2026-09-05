@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { BADGE_ICON_IDS, BADGE_TONE_IDS, BADGE_STATES, type BadgeState } from "@pkviewer/shared";
 import {
+  badgeNeedsNoConsent,
   buildCreditsPage,
   deleteCredit,
   deleteSection,
@@ -20,12 +21,14 @@ import {
   saveSection,
 } from "../../admin/index.ts";
 import { resolveSession } from "../../auth/sessions.ts";
-import { accountManagesSystem } from "../../claims/index.ts";
+import { accountManagesSystem, ensureSystemRow } from "../../claims/index.ts";
 import type { Config } from "../../config/index.ts";
 import type { Db } from "../../db/index.ts";
+import type { PkClient } from "../../pk/client.ts";
+import { PkError } from "../../pk/errors.ts";
 import { readCookie, SESSION_COOKIE } from "../cookies.ts";
 
-type Deps = { cfg: Config; db: Db; now?: () => number };
+type Deps = { cfg: Config; db: Db; pk: PkClient; now?: () => number };
 
 /**
  * The administration API.
@@ -40,7 +43,7 @@ type Deps = { cfg: Config; db: Db; now?: () => number };
  * would confirm that an admin API exists at this path.
  */
 export function adminRoutes(deps: Deps): Hono {
-  const { db } = deps;
+  const { db, pk } = deps;
   const now = deps.now ?? (() => Date.now());
   const app = new Hono();
 
@@ -123,19 +126,40 @@ export function adminRoutes(deps: Deps): Hono {
    * Grants a badge.
    *
    * The subject is named by pkviewer address or PluralKit HID rather than by
-   * internal id: an admin is looking at a page, not at a database. Resolution
-   * is read-only and never creates a system row — badging a system that has
-   * never been claimed would produce an offer nobody can ever answer.
+   * internal id: an admin is looking at a page, not at a database.
+   *
+   * A system pkviewer has never seen is resolved through PluralKit and given a
+   * local row — but ONLY for a badge that needs no consent. Granting a
+   * consent-required badge to a stranger would create an offer nobody can ever
+   * receive: it would read as granted in the admin list and be invisible
+   * everywhere else, permanently. Refusing says so instead.
    */
   app.post("/assignments", async (c) => {
     const who = admin(c);
     if (who instanceof Response) return who;
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
     const ref = typeof body["subject"] === "string" ? body["subject"].trim() : "";
+    const badgeId = String(body["badgeId"] ?? "");
     if (!ref) return c.json({ error: "invalid", failures: [{ field: "subject", reason: "required" }] }, 422);
 
-    const systemId = resolveSystemId(db, ref);
-    if (!systemId) return c.json({ error: "unknown_subject" }, 404);
+    let systemId = resolveSystemId(db, ref);
+
+    if (!systemId) {
+      if (!badgeNeedsNoConsent(db, badgeId)) {
+        return c.json({ error: "unknown_subject" }, 404);
+      }
+      // A read against the public PluralKit API, exactly as a public page does.
+      // No credential, and nothing is written unless PluralKit knows the system.
+      try {
+        const pkSystem = await pk.getSystem(normalizeRef(ref));
+        systemId = ensureSystemRow(db, pkSystem, now());
+      } catch (err) {
+        if (err instanceof PkError && err.status === 404) {
+          return c.json({ error: "unknown_subject" }, 404);
+        }
+        return c.json({ error: "upstream_unavailable" }, 502);
+      }
+    }
 
     // Consent is the reason a grant starts pending. When the granting admin is
     // also the system's manager there is nobody else to ask.
@@ -145,7 +169,7 @@ export function adminRoutes(deps: Deps): Hono {
       db,
       {
         subjectId: systemId,
-        badgeId: String(body["badgeId"] ?? ""),
+        badgeId,
         note: body["note"],
         byAccount: who,
         autoAccept,
@@ -268,8 +292,12 @@ export function adminRoutes(deps: Deps): Hono {
  * Read-only by design. A system with no local row has never been claimed, so
  * there is nobody who could accept a badge offered to it.
  */
+function normalizeRef(ref: string): string {
+  return ref.replace(/^\/+s\/+/, "").toLowerCase();
+}
+
 function resolveSystemId(db: Db, ref: string): string | null {
-  const normalized = ref.replace(/^\/+s\/+/, "").toLowerCase();
+  const normalized = normalizeRef(ref);
 
   const bySlug = db
     .query<{ subject_id: string | null }, [string]>(

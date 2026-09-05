@@ -571,3 +571,131 @@ describe("a badge reaches the public page model", () => {
     }
   });
 });
+
+/**
+ * PK Dev: the badge that does not wait for an answer.
+ *
+ * The people it recognises have no reason to hold a pkviewer account, so an
+ * offer would be a badge that never appears. Everything else still waits — the
+ * exception is a column in the data (migration 007), not a branch keyed on a
+ * badge id, so it stays visible and reviewable.
+ */
+describe("badges that need no consent", () => {
+  test("PK Dev is the only badge exempt from consent", () => {
+    const exempt = listBadges(db).filter((b) => !b.consentRequired).map((b) => b.id);
+    expect(exempt).toEqual(["pk-dev"]);
+  });
+
+  test("a PK Dev grant shows immediately, with no account involved", () => {
+    const admin = account();
+    grantAdmin(db, admin, NOW);
+    const sys = system("abcde"); // five characters: PluralKit issues both lengths
+    // Nobody manages this system, so autoAccept is false — and it shows anyway.
+    const result = grantBadge(
+      db,
+      { subjectId: sys, badgeId: "pk-dev", byAccount: admin, autoAccept: false },
+      NOW,
+    );
+    expect(result.ok).toBe(true);
+    expect(publicBadgesFor(db, sys).map((b) => b.id)).toEqual(["pk-dev"]);
+  });
+
+  test("every other badge still waits, granted the same way", () => {
+    const admin = account();
+    grantAdmin(db, admin, NOW);
+    const sys = system();
+    for (const badgeId of ["owner", "girlfriend", "friend", "bug-hunter", "security", "contributor"]) {
+      grantBadge(db, { subjectId: sys, badgeId, byAccount: admin, autoAccept: false }, NOW);
+    }
+    expect(publicBadgesFor(db, sys)).toEqual([]);
+  });
+
+  /**
+   * The exemption is from asking first, not from being removable. Once someone
+   * claims their system it behaves like any other badge — otherwise "shows
+   * without consent" would mean "cannot be taken down", which is a different
+   * and much worse thing.
+   */
+  test("the recipient can still take it down once they claim", () => {
+    const admin = account();
+    const owner = account();
+    grantAdmin(db, admin, NOW);
+    const sys = system();
+    grantBadge(db, { subjectId: sys, badgeId: "pk-dev", byAccount: admin, autoAccept: false }, NOW);
+    manages(owner, sys);
+
+    expect(offeredBadgesFor(db, sys).map((b) => b.state)).toEqual(["accepted"]);
+    expect(respondToBadge(db, sys, "pk-dev", "decline", NOW, owner).ok).toBe(true);
+    expect(publicBadgesFor(db, sys)).toEqual([]);
+  });
+
+  test("an admin can revoke it without the recipient", () => {
+    const admin = account();
+    grantAdmin(db, admin, NOW);
+    const sys = system();
+    grantBadge(db, { subjectId: sys, badgeId: "pk-dev", byAccount: admin, autoAccept: false }, NOW);
+    revokeBadge(db, listAssignments(db)[0]!.id, NOW, admin);
+    expect(publicBadgesFor(db, sys)).toEqual([]);
+  });
+
+  // Turning consent off is a migration-level decision, so the editable surface
+  // must not be able to reach it. Editing a badge's wording must not silently
+  // make it consent-free, and creating one must not start it that way.
+  test("saving a badge cannot change whether it needs consent", () => {
+    const before = listBadges(db).find((b) => b.id === "pk-dev")!;
+    saveBadge(
+      db,
+      { id: "pk-dev", label: before.label, description: before.description, icon: "gem", tone: "green" },
+      NOW,
+    );
+    expect(listBadges(db).find((b) => b.id === "pk-dev")!.consentRequired).toBe(false);
+
+    saveBadge(
+      db,
+      { id: "translator", label: "Translator", description: "Translated pkviewer.", icon: "gem", tone: "teal" },
+      NOW,
+    );
+    expect(listBadges(db).find((b) => b.id === "translator")!.consentRequired).toBe(true);
+  });
+
+  // A `systems` row is created for a PK dev who has never used pkviewer. That
+  // row must not make their public page claim to be managed here.
+  test("a badged stranger's page does not report itself as claimed", async () => {
+    const admin = account();
+    grantAdmin(db, admin, NOW);
+    const systemId = randomUUID();
+    db.query(
+      "INSERT INTO systems (id, pk_system_uuid, pk_system_hid, created_at) VALUES (?,?,?,?)",
+    ).run(systemId, "8b0655f4-055a-46b9-a5fc-a099e8a6b810", "tythty", NOW);
+    grantBadge(db, { subjectId: systemId, badgeId: "pk-dev", byAccount: admin, autoAccept: false }, NOW);
+
+    const impl = (async (input: string | URL) => {
+      const path = String(input).replace("https://api.pluralkit.me/v2", "");
+      if (path.endsWith("/members")) return Response.json([]);
+      return Response.json({
+        id: "tythty",
+        uuid: "8b0655f4-055a-46b9-a5fc-a099e8a6b810",
+        name: "Upstream",
+        description: null,
+      });
+    }) as unknown as typeof fetch;
+    const client = new PkClient({
+      apiBase: "https://api.pluralkit.me/v2",
+      userAgent: "pkviewer/test (+https://github.com/owner/pkviewer)",
+      readRps: 1000,
+      writeRps: 1000,
+      fetchImpl: impl,
+      snapshots: new MemorySnapshotStore(),
+      sleep: async () => {},
+      maxRetries: 0,
+    });
+
+    const page = await buildSystemPage({ db, pk: client }, "tythty");
+    expect(page.ok).toBe(true);
+    if (page.ok) {
+      expect(page.value.badges.map((b) => b.id)).toEqual(["pk-dev"]);
+      // Known to pkviewer, but nobody has claimed it.
+      expect(page.value.system.claimed).toBe(false);
+    }
+  });
+});

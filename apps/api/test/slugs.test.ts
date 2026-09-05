@@ -435,3 +435,41 @@ describe("resolution and canonical URLs", () => {
     expect(looksLikeSnowflake("12345")).toBe(false);
   });
 });
+
+/**
+ * PluralKit issues both five- and six-character system ids.
+ *
+ * The five-character case is the one a hand-written fixture forgets, and both
+ * halves of the rule depend on it: a five-letter slug must be refused for the
+ * same reason a six-letter one is (it would shadow somebody's id URL), and a
+ * five-character reference must still be recognised as an id.
+ */
+describe("PluralKit id lengths", () => {
+  test("both lengths are recognised as ids", () => {
+    expect(looksLikeHid("abcde")).toBe(true);
+    expect(looksLikeHid("abcdef")).toBe(true);
+  });
+
+  test("neither length is available as a system address", () => {
+    for (const candidate of ["abcde", "abcdef"]) {
+      const result = validateSlug(candidate, "system");
+      expect(result.ok, candidate).toBe(false);
+      if (!result.ok) expect(result.reason, candidate).toBe("id_shaped");
+    }
+  });
+
+  // The ban is on the SHAPE, not the length: adding a digit or a hyphen makes
+  // the same string unmistakably a slug, and it should be allowed.
+  test("a digit or hyphen at either length is still a usable address", () => {
+    for (const candidate of ["abcd1", "abcde1", "ab-de", "ab-def"]) {
+      expect(validateSlug(candidate, "system").ok, candidate).toBe(true);
+    }
+  });
+
+  test("four and seven letters were never id-shaped", () => {
+    expect(looksLikeHid("abcd")).toBe(false);
+    expect(looksLikeHid("abcdefg")).toBe(false);
+    expect(validateSlug("abcd", "system").ok).toBe(true);
+    expect(validateSlug("abcdefg", "system").ok).toBe(true);
+  });
+});

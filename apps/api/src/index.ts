@@ -63,7 +63,7 @@ app.route(
   }),
 );
 
-app.route("/admin", adminRoutes({ cfg, db }));
+app.route("/admin", adminRoutes({ cfg, db, pk }));
 
 app.route("/claims", claimRoutes({ cfg, db, pk }));
 

@@ -110,6 +110,13 @@ export type BadgeRow = {
   tone: BadgeToneId;
   sortOrder: number;
   retiredAt: number | null;
+  /**
+   * Whether this badge waits for its recipient before appearing.
+   *
+   * True for everything except PK Dev; see migration 007 for why that one is
+   * different and why this is not editable over HTTP.
+   */
+  consentRequired: boolean;
 };
 
 type RawBadge = {
@@ -120,6 +127,7 @@ type RawBadge = {
   tone: string;
   sort_order: number;
   retired_at: number | null;
+  consent_required: number;
 };
 
 /**
@@ -141,13 +149,14 @@ function toBadgeRow(r: RawBadge): BadgeRow | null {
     tone: r.tone,
     sortOrder: r.sort_order,
     retiredAt: r.retired_at,
+    consentRequired: r.consent_required !== 0,
   };
 }
 
 export function listBadges(db: Db, opts: { includeRetired?: boolean } = {}): BadgeRow[] {
   const rows = db
     .query<RawBadge, []>(
-      `SELECT id, label, description, icon, tone, sort_order, retired_at
+      `SELECT id, label, description, icon, tone, sort_order, retired_at, consent_required
          FROM badges ORDER BY sort_order, id`,
     )
     .all();
@@ -221,6 +230,9 @@ export function saveBadge(
   const sortOrder = Number.isFinite(input.sortOrder) ? Number(input.sortOrder) : 0;
   writeTx(db, (tx) => {
     tx.query(
+      // consent_required is absent from both the insert and the update: a new
+      // badge gets the column default (consent required), and editing an
+      // existing one cannot change it. See migration 007.
       `INSERT INTO badges (id, label, description, icon, tone, sort_order, created_at)
        VALUES (?,?,?,?,?,?,?)
        ON CONFLICT (id) DO UPDATE SET
@@ -335,6 +347,23 @@ function toAssignment(r: RawAssignment): Assignment {
   };
 }
 
+/**
+ * Whether a badge may be granted to a system that has never used pkviewer.
+ *
+ * Only badges that need no answer. Granting a consent-required badge to a
+ * system with no account produces an offer nobody can ever receive, which is a
+ * worse outcome than refusing: it looks granted in the admin list and is
+ * invisible everywhere else, forever.
+ */
+export function badgeNeedsNoConsent(db: Db, badgeId: string): boolean {
+  const row = db
+    .query<{ consent_required: number }, [string]>(
+      "SELECT consent_required FROM badges WHERE id = ? AND retired_at IS NULL",
+    )
+    .get(badgeId);
+  return row !== null && row !== undefined && row.consent_required === 0;
+}
+
 export function listAssignments(db: Db, state?: BadgeState): Assignment[] {
   const rows = state
     ? db.query<RawAssignment, [string]>(`${ASSIGNMENT_SELECT} WHERE sb.state = ? ORDER BY sb.granted_at DESC`).all(state)
@@ -368,8 +397,8 @@ export function grantBadge(
   now: number,
 ): { ok: true; assignment: Assignment } | { ok: false; reason: GrantFailure } {
   const badge = db
-    .query<{ id: string; retired_at: number | null }, [string]>(
-      "SELECT id, retired_at FROM badges WHERE id = ?",
+    .query<{ id: string; retired_at: number | null; consent_required: number }, [string]>(
+      "SELECT id, retired_at, consent_required FROM badges WHERE id = ?",
     )
     .get(input.badgeId);
   if (!badge) return { ok: false, reason: "unknown_badge" };
@@ -383,7 +412,11 @@ export function grantBadge(
   const note = textField(input.note, "note", MAX_BADGE_NOTE_LENGTH, false);
   if (!note.ok) return { ok: false, reason: "invalid_note" };
 
-  const state: BadgeState = input.autoAccept ? "accepted" : "pending";
+  // Accepted on arrival in two cases: the badge does not require consent
+  // (migration 007), or the granting admin is the subject's own manager, in
+  // which case the person consenting and the person granting are the same.
+  const accepted = badge.consent_required === 0 || input.autoAccept;
+  const state: BadgeState = accepted ? "accepted" : "pending";
 
   const id = writeTx(db, (tx) => {
     tx.query(
@@ -405,7 +438,7 @@ export function grantBadge(
       note.value,
       now,
       input.byAccount,
-      input.autoAccept ? now : null,
+      accepted ? now : null,
     );
     audit(tx, now, input.byAccount, "badge.grant", input.subjectId, {
       badge: input.badgeId,

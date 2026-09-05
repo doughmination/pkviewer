@@ -24,6 +24,25 @@ export type PageResult<T> = { ok: true; value: T } | { ok: false; reason: PageFa
 
 type Deps = { db: Db; pk: PkClient; now?: () => number; freshnessMs?: number };
 
+/**
+ * Whether this system is actually claimed, rather than merely known.
+ *
+ * A `systems` row is not proof of a claim. Rows are created lazily for anything
+ * pkviewer holds local data about, and an admin granting a badge to a PluralKit
+ * developer creates one for a system nobody has ever signed in for. Reading the
+ * row's existence as "claimed" would report those systems as managed on
+ * pkviewer when they are not.
+ */
+function isClaimed(db: Db, systemId: string | null): boolean {
+  if (!systemId) return false;
+  const row = db
+    .query<{ claimed_at: number | null }, [string]>(
+      "SELECT claimed_at FROM systems WHERE id = ?",
+    )
+    .get(systemId);
+  return row?.claimed_at !== null && row?.claimed_at !== undefined;
+}
+
 function socialsFor(db: Db, ownerType: "system" | "member", ownerId: string | null): SocialLink[] {
   if (!ownerId) return [];
   return db
@@ -212,7 +231,7 @@ export async function buildSystemPage(
       system: toSystemView(system, {
         slug,
         memberCount: members.length,
-        claimed: systemId !== null,
+        claimed: isClaimed(deps.db, systemId),
         staleSinceMs: stalenessFor(deps, "system", cacheRef),
         showPronouns,
         bannerVisible,
@@ -270,7 +289,7 @@ export async function buildMemberPage(
       system: toSystemView(system, {
         slug: systemSlug,
         memberCount: 0,
-        claimed: systemId !== null,
+        claimed: isClaimed(deps.db, systemId),
         staleSinceMs: stalenessFor(deps, "system", cacheRef),
         showPronouns,
         bannerVisible,
