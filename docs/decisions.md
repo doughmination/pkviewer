@@ -511,6 +511,45 @@ is correct and discloses nothing — a system that does not exist and one that
 belongs to someone else are indistinguishable — and every management page is
 `noindex`. Worth revisiting if it ever matters for monitoring.
 
+## Deployment
+
+**D1. Two containers, mirroring the two processes.** The API is the only SQLite
+writer, so it is the only container with the data volume. It is `expose`d to the
+compose network and never `ports:`-published: the browser reaches it only
+through the web tier's proxy, so publishing 3001 would put the management API on
+the host network. The web tier binds `127.0.0.1:3000` and a TLS-terminating
+reverse proxy sits in front. Guarded by `apps/web/test/docker.test.ts`.
+
+**D2. Images are built in CI, not on the server.** `.github/workflows/images.yml`
+publishes `USER/pkviewer-api` and `USER/pkviewer-web` to **Docker Hub** for
+amd64 and arm64; `docker-compose.prod.yml` swaps `build:` for `image:` and
+changes nothing else. Docker Hub over GHCR was the owner's preference — both
+registries pin identically, so this was not a technical constraint. CI
+authenticates with a scoped access token in `DOCKERHUB_TOKEN`, never a password.
+
+**D3. Every build gets an immutable tag.** `latest` moves; `sha-<short>` and
+semver tags do not. Production pins one of the immutable ones so a restart, or
+`pull_policy: always`, cannot silently change what is running. A test asserts
+the workflow's build matrix and the overlay's image names cannot drift apart,
+because nothing else connects them and the failure only surfaces at deploy time.
+
+**D4. Origins are configuration, never baked into an image.** The web image
+builds with `http://build.invalid` placeholders precisely so that a value
+leaking into the bundle would be obvious. Every page embedding an origin is
+force-dynamic and reads config at request time, which is what keeps the eventual
+domain move a config change rather than a rebuild.
+
+**D5. The container Bun must match the lockfile's Bun.** A stale pin (1.2 against
+a 1.4 lockfile) built locally and failed on the server, since `--frozen-lockfile`
+cannot satisfy a newer lockfile. `--frozen-lockfile` stays — it was correctly
+reporting a real mismatch — and a test asserts the pinned tag tracks the Bun the
+suite runs under.
+
+**D6. Missing Discord credentials warn, they do not abort.** Production once
+hard-failed without them, which contradicted the documented read-only
+deployment and showed up only as an unhealthy container. Public pages work
+without sign-in; the warning names the three variables that enable it.
+
 ## Guardrails
 
 No user JavaScript, ever. No arbitrary HTML. No custom CSS in MVP. No

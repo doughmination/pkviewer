@@ -43,7 +43,13 @@ services:
       # lives in this file: accounts, claims, addresses, themes, links.
       - pkviewer-data:/data
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/health"]
+      # Uses Bun rather than wget or curl: this is a Bun image, so the runtime
+      # is certain to be there while a fetch tool is not.
+      test:
+        - CMD
+        - bun
+        - -e
+        - fetch("http://127.0.0.1:3001/health").then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))
       interval: 30s
       timeout: 5s
       retries: 3

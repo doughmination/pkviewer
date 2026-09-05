@@ -1,0 +1,89 @@
+name: Publish images
+
+# Builds both images and pushes them to Docker Hub, so a server pulls rather
+# than compiles. Building on the box costs about seventy seconds of CPU it does
+# not have spare, and means the running code was compiled somewhere unversioned.
+#
+# Images are built for amd64 and arm64: most VPS hosts are amd64, Apple Silicon
+# is arm64, and one manifest serves both.
+#
+# Requires two repository secrets:
+#   DOCKERHUB_USERNAME  the account the images live under
+#   DOCKERHUB_TOKEN     an access token from Docker Hub → Account settings →
+#                       Personal access tokens, with Read & Write scope.
+#                       An access token, never the account password.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  # Docker Hub image names are `account/name`, so the repository name cannot be
+  # used directly — it already contains a slash.
+  IMAGE_NAME: pkviewer
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            dockerfile: docker/api.Dockerfile
+          - name: web
+            dockerfile: docker/web.Dockerfile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Sign in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Work out tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}-${{ matrix.name }}
+          tags: |
+            # A moving pointer for convenience, and immutable tags to pin to.
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          # The repository root: both images depend on the shared workspace.
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Layer cache, so a source-only change does not reinstall dependencies
+          # on every run.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Docker Hub renders a plain manifest list more predictably than one
+          # carrying provenance attestations.
+          provenance: false
+
+      - name: Report what was published
+        run: |
+          echo "### Published" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

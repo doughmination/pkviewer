@@ -61,3 +61,41 @@ describe("container toolchain", () => {
     expect(compose).toContain('"127.0.0.1:3000:3000"');
   });
 });
+
+/**
+ * The publish workflow and the production overlay have to agree on image names,
+ * and nothing else connects them: CI pushes `USER/pkviewer-api`, the server
+ * pulls whatever the overlay spells. Rename one and the other keeps working
+ * right up until a deploy pulls a tag that was never published.
+ */
+describe("published images", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/images.yml"), "utf8");
+  const overlay = readFileSync(join(root, "docker-compose.prod.yml"), "utf8");
+
+  // Just the build matrix: `- name:` also introduces every workflow step.
+  const matrix = workflow.slice(workflow.indexOf("include:")).split(/^ {4}\w/m)[0]!;
+  const built = [...matrix.matchAll(/- name: ([\w-]+)$/gm)].map((m) => m[1]!);
+  const pulled = [...overlay.matchAll(/image: \$\{IMAGE_BASE[^}]*\}-([\w-]+):/g)].map((m) => m[1]!);
+
+  test("CI builds an image for every service the overlay pulls", () => {
+    // Both sides come from regexes, so an empty match on both would otherwise
+    // agree vacuously.
+    expect(built.length).toBeGreaterThan(0);
+    expect(new Set(built)).toEqual(new Set(pulled));
+  });
+
+  test("the overlay pulls an image for every service compose defines", () => {
+    const compose = readFileSync(join(root, "docker-compose.yml"), "utf8");
+    // Only the services block: top-level `volumes:` also holds two-space keys.
+    const block = compose.slice(compose.indexOf("services:") + 9).split(/^\S/m)[0]!;
+    const services = [...block.matchAll(/^ {2}([\w-]+):$/gm)].map((m) => m[1]!);
+    expect(new Set(pulled)).toEqual(new Set(services));
+  });
+
+  // A password would work and would be wrong: a token is scoped and can be
+  // revoked on its own.
+  test("the registry credential is a secret, never a literal", () => {
+    expect(workflow).toContain("${{ secrets.DOCKERHUB_TOKEN }}");
+    expect(workflow).not.toMatch(/password:\s*(?!\$\{\{)\S/);
+  });
+});

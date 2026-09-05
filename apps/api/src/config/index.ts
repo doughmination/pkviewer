@@ -189,22 +189,38 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       ["PUBLIC_ASSET_ORIGIN", e.PUBLIC_ASSET_ORIGIN ?? e.PUBLIC_ORIGIN],
     ] as const) {
       if (!value.startsWith("https://")) {
-        throw new ConfigError(`${key} must be https in production (got ${value})`);
+        // Session cookies are Secure and __Host- prefixed, so sign-in cannot
+        // work over http. TLS terminates at the proxy in front; this is the
+        // public URL people visit, not the address the container listens on.
+        throw new ConfigError(
+          `${key} must be https in production (got ${value}). ` +
+            "It is the public URL visitors use — TLS terminates at your reverse " +
+            "proxy, and the container itself still speaks http behind it.",
+        );
       }
     }
-    if (e.DISCORD_REDIRECT_URIS.length === 0) {
-      throw new ConfigError("DISCORD_REDIRECT_URIS must list at least one URI in production");
-    }
+
     if (e.SESSION_SECRET.length < 32) {
       throw new ConfigError(
         "SESSION_SECRET must be at least 32 characters in production. " +
           "Generate one with: openssl rand -base64 32",
       );
     }
-    if (!e.DISCORD_CLIENT_ID || !e.DISCORD_CLIENT_SECRET) {
-      throw new ConfigError(
-        "DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET are required in production; " +
-          "without them nobody can sign in.",
+    /**
+     * Incomplete Discord configuration warns; it does not stop the server.
+     *
+     * Every public page works without it — only sign-in is unavailable, and
+     * that endpoint already answers 503. Refusing to boot made a read-only
+     * deployment impossible and blocked bringing a stack up before the OAuth
+     * application exists, which is the normal order of doing things.
+     */
+    const discordReady =
+      e.DISCORD_CLIENT_ID && e.DISCORD_CLIENT_SECRET && e.DISCORD_REDIRECT_URIS.length > 0;
+    if (!discordReady) {
+      console.warn(
+        "[config] Discord sign-in is not configured, so nobody can sign in. " +
+          "Public pages work normally. Set DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET " +
+          "and DISCORD_REDIRECT_URIS to enable it.",
       );
     }
   }

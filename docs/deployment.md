@@ -67,7 +67,13 @@ is `force-dynamic` specifically to keep that true.
 | `DISCORD_REDIRECT_URIS` | **production** | Comma-separated. **Register the beta and production URIs together** so the domain move is a cutover, not a flag day. Each must be `<public origin>/auth/discord/callback` and registered identically in Discord. |
 
 Without Discord credentials the app still runs and every public page works —
-nobody can sign in. That is a legitimate read-only deployment.
+nobody can sign in, and `/auth/discord/start` answers 503. That is a legitimate
+read-only deployment, and startup says so rather than refusing to boot.
+
+`PUBLIC_ORIGIN` must still be https in production even before a certificate
+exists: it is the public URL visitors will use, TLS terminates at the proxy in
+front, and the container itself speaks http behind it. Session cookies are
+`Secure`, so sign-in cannot work over http.
 
 ### Database
 
@@ -185,6 +191,71 @@ docker compose exec api sh -c \
 
 or more simply, stop the stack and copy the volume. Never `cp` a live WAL
 database.
+
+## Running from published images
+
+Building on the server costs CPU it usually has none of, and means the running
+code was compiled somewhere unversioned. `.github/workflows/images.yml` builds
+both images for amd64 and arm64 on every push to `main` and publishes them to
+Docker Hub, so the server pulls instead.
+
+The workflow needs two repository secrets, under Settings → Secrets and
+variables → Actions:
+
+| Secret | Value |
+| --- | --- |
+| `DOCKERHUB_USERNAME` | the Docker Hub account the images live under |
+| `DOCKERHUB_TOKEN` | a personal access token with Read & Write scope, from Docker Hub → Account settings → Personal access tokens |
+
+Use an access token, never the account password: a token is scoped, listed, and
+revocable on its own without changing the password everywhere else it is used.
+
+The two repositories — `USER/pkviewer-api` and `USER/pkviewer-web` — are created
+by the first successful push. They are public by default; make them private in
+Docker Hub if that is wanted, and then `docker login` on the server before
+pulling.
+
+Add to `.env`:
+
+```
+IMAGE_BASE=USER/pkviewer
+IMAGE_TAG=latest
+```
+
+`IMAGE_BASE` omits the `-api` and `-web` suffix, which the overlay appends, and
+needs no registry host — Docker Hub is the default, so `USER/pkviewer` and
+`docker.io/USER/pkviewer` mean the same thing.
+
+Then:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+The overlay swaps `build:` for `image:` and changes nothing else — the
+unpublished API port, the loopback web binding and the data volume all still
+come from the base file.
+
+### Pinning
+
+Every build is published under several tags:
+
+| Tag | Moves | Use |
+| --- | --- | --- |
+| `latest` | yes, on every push to `main` | convenience only |
+| `sha-abc1234` | never | pin to an exact commit |
+| `1.2.3` | never | pin to a release, from a `v1.2.3` git tag |
+| `1.2` | yes, within a minor series | patch updates without a version bump |
+
+Pin `IMAGE_TAG` to one of the immutable tags in production. `latest` means a
+`docker compose pull` — or an automatic restart with `pull_policy: always` —
+can silently change what is running, and there is then no record of what was
+running when something broke.
+
+For an exact, unfakeable pin, use a digest instead of a tag: `docker buildx
+imagetools inspect USER/pkviewer-api:1.2.3` prints one, and
+`IMAGE_TAG=1.2.3@sha256:…` works in the overlay.
 
 ## Deploying a change
 

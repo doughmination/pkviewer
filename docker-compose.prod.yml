@@ -1,0 +1,33 @@
+# Running from published images instead of building on the server.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# This overlay replaces the `build:` in docker-compose.yml with an `image:`, so
+# the server pulls what CI already built and tested rather than compiling. Every
+# other setting — the unpublished API port, the loopback web binding, the data
+# volume — comes from the base file unchanged.
+#
+# Set IMAGE_BASE and IMAGE_TAG in .env, for example:
+#   IMAGE_BASE=yourdockerhubuser/pkviewer
+#   IMAGE_TAG=latest
+#
+# IMAGE_BASE is the Docker Hub account and name without the `-api` / `-web`
+# suffix, which this file appends. No registry host is needed: Docker Hub is the
+# default, so `user/pkviewer` and `docker.io/user/pkviewer` mean the same thing.
+#
+# Pin IMAGE_TAG to a released version rather than `latest` once there is one, so
+# a restart cannot quietly change what is running. The publish workflow tags
+# every build with a short commit sha as well as semver, so there is always
+# something immutable to pin to.
+
+services:
+  api:
+    image: ${IMAGE_BASE:?set IMAGE_BASE in .env}-api:${IMAGE_TAG:-latest}
+    build: !reset null
+    pull_policy: always
+
+  web:
+    image: ${IMAGE_BASE:?set IMAGE_BASE in .env}-web:${IMAGE_TAG:-latest}
+    build: !reset null
+    pull_policy: always

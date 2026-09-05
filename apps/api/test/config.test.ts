@@ -151,9 +151,21 @@ describe("beta readiness", () => {
     expect(() => loadConfig(withoutSecret)).toThrow(/SESSION_SECRET/);
   });
 
-  test("production refuses to start without Discord credentials", () => {
-    const { DISCORD_CLIENT_SECRET: _omitted, ...withoutDiscord } = prodBase;
-    expect(() => loadConfig(withoutDiscord)).toThrow(/DISCORD_CLIENT/);
+  // Every public page works without Discord; only sign-in is unavailable, and
+  // that endpoint answers 503. Refusing to boot made a read-only deployment
+  // impossible and blocked bringing a stack up before the OAuth app exists.
+  test("production starts without Discord credentials, for a read-only deployment", () => {
+    const { DISCORD_CLIENT_SECRET: _s, DISCORD_CLIENT_ID: _i, DISCORD_REDIRECT_URIS: _r, ...readOnly } =
+      prodBase;
+    const cfg = loadConfig(readOnly);
+    expect(cfg.discord.clientId).toBe("");
+    expect(cfg.discord.redirectUris).toEqual([]);
+  });
+
+  test("an http origin in production explains where TLS belongs", () => {
+    expect(() => loadConfig({ ...prodBase, PUBLIC_ORIGIN: "http://system.example" })).toThrow(
+      /reverse\s+proxy/,
+    );
   });
 
   test("the error names the missing variable so it can be fixed", () => {
