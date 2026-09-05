@@ -1,0 +1,17 @@
+{
+  "name": "@pkviewer/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "start": "bun run src/index.ts",
+    "migrate": "bun run src/db/migrate.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@pkviewer/shared": "workspace:*",
+    "hono": "^4.6.0",
+    "zod": "^3.23.8"
+  }
+}

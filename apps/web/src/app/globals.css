@@ -1,0 +1,521 @@
+/*
+ * pkviewer's one stylesheet.
+ *
+ * Loaded once at the root and used by every page. There is no second sheet and
+ * no per-page import, so "which styles does this page get" is never a question.
+ *
+ * It contains two visual languages that deliberately do not mix:
+ *
+ *   PUBLIC pages  (/, /s/...)  are drawn from the system's own theme, through
+ *                              `--pkv-*` properties the theme vocabulary emits.
+ *                              Every value here is a fallback matching the
+ *                              platform default, so an unthemed page is still
+ *                              correct.
+ *
+ *   APP pages     (/login, /manage/...) are drawn from pkviewer's own fixed
+ *                              palette, through `--mg-*`, scoped under `.mg`.
+ *                              The control plane must look the same whichever
+ *                              system you are editing, so it never inherits a
+ *                              user's theme (M6).
+ *
+ * The two prefixes are what keep them apart: a theme can never reach `--mg-*`,
+ * and the app UI never reads `--pkv-*`.
+ */
+
+:root {
+  /* Platform defaults, duplicated as fallbacks only. The authoritative copy is
+   * the vocabulary; these keep an unthemed page correct. */
+  --pkv-color-page: #FAF8FB;
+  --pkv-color-surface: #FFFFFF;
+  --pkv-color-text: #1C1721;
+  --pkv-color-muted: #6B6478;
+  --pkv-color-accent: #A23B72;
+  --pkv-color-border: #E6E1EC;
+  --pkv-font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --pkv-font-heading: "Newsreader", Georgia, serif;
+  --pkv-font-size: 16.5px;
+  --pkv-radius: 10px;
+  --pkv-density: 1;
+  --pkv-avatar-radius: var(--pkv-radius);
+  --pkv-avatar-size: 88px;
+  --pkv-surface-bg: var(--pkv-color-surface);
+  --pkv-surface-border: var(--pkv-color-border);
+  --pkv-surface-pad: 1;
+  --pkv-directory-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --pkv-color-page: #151219;
+    --pkv-color-surface: #1E1A24;
+    --pkv-color-text: #EEEAF2;
+    --pkv-color-muted: #9A93A6;
+    --pkv-color-accent: #F58FC2;
+    --pkv-color-border: #302938;
+  }
+}
+
+/* Spacing scale. Density multiplies the whole scale, so one choice retunes the
+ * page coherently rather than leaving the user to nudge individual gaps. */
+:root {
+  --sp-1: calc(0.25rem * var(--pkv-density));
+  --sp-2: calc(0.5rem * var(--pkv-density));
+  --sp-3: calc(0.75rem * var(--pkv-density));
+  --sp-4: calc(1rem * var(--pkv-density));
+  --sp-6: calc(1.5rem * var(--pkv-density));
+  --sp-8: calc(2rem * var(--pkv-density));
+  --sp-12: calc(3rem * var(--pkv-density));
+  --measure: 68ch;
+  --page-width: 60rem;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--pkv-color-page);
+  color: var(--pkv-color-text);
+  font-family: var(--pkv-font-body);
+  font-size: var(--pkv-font-size);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: var(--pkv-font-heading);
+  font-weight: 600;
+  line-height: 1.18;
+  text-wrap: balance;
+  margin: 0;
+}
+h1 { font-size: 1.95em; letter-spacing: -0.015em; }
+h2 { font-size: 1.3em; }
+
+a { color: var(--pkv-color-accent); text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible {
+  outline: 2px solid var(--pkv-color-accent);
+  outline-offset: 2px;
+}
+
+img { max-width: 100%; height: auto; display: block; }
+code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.88em; }
+
+.page {
+  max-width: var(--page-width);
+  margin: 0 auto;
+  padding: var(--sp-8) var(--sp-4) var(--sp-12);
+}
+
+.stack > * + * { margin-top: var(--sp-6); }
+.stack-tight > * + * { margin-top: var(--sp-2); }
+.prose { max-width: var(--measure); }
+.muted { color: var(--pkv-color-muted); }
+
+/* Card treatment is one token expanding into three properties, so `plain`
+ * genuinely removes the card rather than making it invisible-but-padded. */
+.surface {
+  background: var(--pkv-surface-bg);
+  border: 1px solid var(--pkv-surface-border);
+  border-radius: var(--pkv-radius);
+  padding: calc(var(--sp-4) * var(--pkv-surface-pad));
+}
+
+.notice {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: flex-start;
+  border: 1px solid var(--pkv-color-border);
+  border-radius: var(--pkv-radius);
+  padding: var(--sp-3) var(--sp-4);
+  font-size: 0.875em;
+}
+.notice svg { flex: none; margin-top: 0.2em; }
+
+.identity { display: flex; gap: var(--sp-4); align-items: center; flex-wrap: wrap; }
+
+.avatar {
+  width: var(--pkv-avatar-size);
+  height: var(--pkv-avatar-size);
+  border-radius: var(--pkv-avatar-radius);
+  object-fit: cover;
+  border: 1px solid var(--pkv-color-border);
+  flex: none;
+}
+.avatar-sm {
+  width: calc(var(--pkv-avatar-size) * 0.5);
+  height: calc(var(--pkv-avatar-size) * 0.5);
+}
+
+.banner {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: var(--pkv-radius);
+  border: 1px solid var(--pkv-color-border);
+}
+
+.meta-list {
+  display: flex; flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  padding: 0; margin: 0; list-style: none;
+  font-size: 0.9em;
+}
+.meta-list li { display: inline-flex; align-items: center; gap: var(--sp-2); }
+
+.directory {
+  display: grid;
+  grid-template-columns: var(--pkv-directory-columns);
+  gap: var(--sp-3);
+  padding: 0; margin: 0; list-style: none;
+}
+
+.member-card {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: center;
+  background: var(--pkv-surface-bg);
+  border: 1px solid var(--pkv-surface-border);
+  border-radius: var(--pkv-radius);
+  padding: calc(var(--sp-3) * var(--pkv-surface-pad) + var(--sp-1));
+  text-decoration: none;
+  color: inherit;
+  min-width: 0;
+}
+.member-card:hover { border-color: var(--pkv-color-accent); }
+.member-card .name { font-weight: 600; overflow-wrap: anywhere; }
+
+.socials { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); padding: 0; margin: 0; list-style: none; }
+.socials a { display: inline-flex; align-items: center; gap: var(--sp-2); }
+
+.site-footer {
+  margin-top: var(--sp-12);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--pkv-color-border);
+  font-size: 0.875em;
+}
+
+.breadcrumb { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: 0.9em; text-decoration: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+/* Detailed member cards carry a description line, clamped so one long entry
+ * cannot set the height of an entire row. */
+.member-card .card-blurb {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 0.85em;
+  margin-top: var(--sp-1);
+}
+
+/* ==========================================================================
+   Application UI — /login and /manage. Scoped under .mg so it cannot touch
+   public pages, and so a user's theme cannot touch it.
+   ========================================================================== */
+
+.mg {
+  --mg-bg: #F7F7F9;
+  --mg-panel: #FFFFFF;
+  --mg-ink: #1A1A1F;
+  --mg-ink-soft: #4C4C57;
+  --mg-muted: #6E6E7B;
+  --mg-line: #E2E2E8;
+  --mg-line-strong: #C9C9D3;
+  --mg-accent: #4A3AB5;
+  --mg-accent-soft: #EEEBFA;
+  --mg-danger: #B3261E;
+  --mg-ok: #1F7A4D;
+  --mg-warn: #8A5B00;
+  --mg-radius: 8px;
+  --mg-shadow: 0 1px 2px rgba(20, 20, 30, 0.06), 0 6px 20px -14px rgba(20, 20, 30, 0.25);
+
+  color-scheme: light;
+  background: var(--mg-bg);
+  color: var(--mg-ink);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+@media (prefers-color-scheme: dark) {
+  .mg {
+    --mg-bg: #131317;
+    --mg-panel: #1B1B21;
+    --mg-ink: #ECECF1;
+    --mg-ink-soft: #C3C3CE;
+    --mg-muted: #9494A2;
+    --mg-line: #2C2C35;
+    --mg-line-strong: #3D3D49;
+    --mg-accent: #A99BFF;
+    --mg-accent-soft: #232035;
+    --mg-danger: #FF8A80;
+    --mg-ok: #6FD3A0;
+    --mg-warn: #E3B341;
+    color-scheme: dark;
+  }
+}
+
+.mg * { box-sizing: border-box; }
+.mg a { color: var(--mg-accent); }
+.mg :focus-visible { outline: 2px solid var(--mg-accent); outline-offset: 2px; border-radius: 4px; }
+
+/* ------------------------------------------------------------------ chrome */
+
+.mg-bar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px;
+  background: var(--mg-panel);
+  border-bottom: 1px solid var(--mg-line);
+  position: sticky; top: 0; z-index: 30;
+  flex-wrap: wrap;
+}
+.mg-brand { font-weight: 650; letter-spacing: -0.01em; text-decoration: none; color: var(--mg-ink); }
+.mg-bar .spacer { flex: 1; }
+.mg-bar-note { font-size: 12.5px; color: var(--mg-muted); }
+
+.mg-shell { max-width: 1100px; margin: 0 auto; padding: 20px 16px 64px; }
+
+.mg-layout { display: grid; grid-template-columns: 1fr; gap: 20px; }
+@media (min-width: 900px) {
+  .mg-layout { grid-template-columns: 210px minmax(0, 1fr); gap: 28px; align-items: start; }
+}
+
+/* On narrow screens the section nav becomes a horizontal scroller rather than a
+ * squeezed sidebar: shrinking a sidebar until it is unusable is worse than
+ * changing its shape. */
+.mg-nav { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 4px; }
+.mg-nav a {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: var(--mg-radius);
+  text-decoration: none; color: var(--mg-ink-soft);
+  white-space: nowrap; font-size: 14px;
+}
+.mg-nav a:hover { background: var(--mg-panel); }
+.mg-nav a[aria-current="page"] { background: var(--mg-accent-soft); color: var(--mg-accent); font-weight: 600; }
+@media (min-width: 900px) {
+  .mg-nav { flex-direction: column; overflow: visible; position: sticky; top: 68px; }
+}
+
+/* ------------------------------------------------------------------ panels */
+
+.mg-panel {
+  background: var(--mg-panel);
+  border: 1px solid var(--mg-line);
+  border-radius: var(--mg-radius);
+  padding: 18px;
+  box-shadow: var(--mg-shadow);
+}
+.mg-panel + .mg-panel { margin-top: 16px; }
+.mg-panel h2 { font-size: 15px; margin: 0 0 4px; letter-spacing: -0.005em; }
+.mg-panel .hint { color: var(--mg-muted); font-size: 13px; margin: 0 0 14px; }
+
+.mg-head { margin-bottom: 18px; }
+.mg-head h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.015em; }
+.mg-head p { margin: 0; color: var(--mg-muted); font-size: 13.5px; }
+
+/* ------------------------------------------------------------------- forms */
+
+.mg-field { display: grid; gap: 6px; margin-bottom: 16px; }
+.mg-field:last-child { margin-bottom: 0; }
+.mg-field label { font-size: 13.5px; font-weight: 600; }
+.mg-field .desc { font-size: 12.5px; color: var(--mg-muted); }
+.mg-field .err { font-size: 12.5px; color: var(--mg-danger); font-weight: 500; }
+
+.mg-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
+
+.mg input[type="text"], .mg input[type="url"], .mg select {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--mg-line-strong);
+  border-radius: 6px;
+  background: var(--mg-panel);
+  color: var(--mg-ink);
+  width: 100%;
+  min-width: 0;
+}
+.mg input[aria-invalid="true"] { border-color: var(--mg-danger); }
+
+.mg-colour { display: flex; align-items: center; gap: 8px; }
+.mg-colour input[type="color"] {
+  inline-size: 38px; block-size: 34px; padding: 2px;
+  border: 1px solid var(--mg-line-strong); border-radius: 6px;
+  background: var(--mg-panel); cursor: pointer; flex: none;
+}
+.mg-colour input[type="text"] { font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+
+/* -------------------------------------------------------------- inheritance */
+
+/* Inherited vs overridden is shown by a word and a border, never by colour
+ * alone: state must survive both colour blindness and a greyscale print. */
+.mg-inherit {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 600;
+  padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--mg-line-strong);
+  color: var(--mg-muted);
+  background: transparent;
+}
+.mg-inherit[data-state="override"] {
+  border-color: var(--mg-accent);
+  color: var(--mg-accent);
+  background: var(--mg-accent-soft);
+}
+.mg-field[data-state="override"] {
+  border-left: 3px solid var(--mg-accent);
+  padding-left: 12px;
+  margin-left: -15px;
+}
+.mg-field-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mg-field-head .spacer { flex: 1; }
+
+/* ----------------------------------------------------------------- buttons */
+
+.mg button, .mg .btn {
+  font: inherit; font-size: 13.5px; font-weight: 500;
+  padding: 7px 13px; border-radius: 6px;
+  border: 1px solid var(--mg-line-strong);
+  background: var(--mg-panel); color: var(--mg-ink);
+  cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 7px;
+}
+.mg button:hover:not(:disabled), .mg .btn:hover { border-color: var(--mg-accent); color: var(--mg-accent); }
+.mg button:disabled { opacity: 0.55; cursor: not-allowed; }
+.mg button.primary {
+  background: var(--mg-accent); border-color: var(--mg-accent); color: #fff;
+}
+.mg button.primary:hover:not(:disabled) { filter: brightness(1.08); color: #fff; }
+.mg button.ghost { border-color: transparent; background: transparent; color: var(--mg-muted); }
+.mg button.ghost:hover:not(:disabled) { background: var(--mg-bg); }
+.mg button.danger { color: var(--mg-danger); }
+.mg button.danger:hover:not(:disabled) { border-color: var(--mg-danger); }
+.mg button.icon { padding: 6px; }
+
+/* ---------------------------------------------------------------- save bar */
+
+.mg-savebar {
+  position: sticky; bottom: 0; z-index: 20;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-top: 18px; padding: 12px 16px;
+  background: var(--mg-panel);
+  border: 1px solid var(--mg-line);
+  border-radius: var(--mg-radius);
+  box-shadow: var(--mg-shadow);
+}
+.mg-savebar .spacer { flex: 1; }
+.mg-status { font-size: 13px; display: inline-flex; align-items: center; gap: 7px; }
+.mg-status[data-tone="dirty"] { color: var(--mg-warn); }
+.mg-status[data-tone="ok"] { color: var(--mg-ok); }
+.mg-status[data-tone="error"] { color: var(--mg-danger); }
+
+/* ------------------------------------------------------------------- lists */
+
+.mg-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.mg-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  background: var(--mg-panel);
+  border: 1px solid var(--mg-line);
+  border-radius: var(--mg-radius);
+  text-decoration: none; color: inherit;
+  min-width: 0;
+}
+a.mg-card:hover { border-color: var(--mg-accent); }
+.mg-card .grow { flex: 1; min-width: 0; }
+.mg-card .title { font-weight: 600; overflow-wrap: anywhere; }
+.mg-card .sub { font-size: 12.5px; color: var(--mg-muted); overflow-wrap: anywhere; }
+.mg-thumb { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; border: 1px solid var(--mg-line); flex: none; }
+
+.mg-tag {
+  font-size: 11.5px; font-weight: 600;
+  padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--mg-line-strong); color: var(--mg-muted);
+  white-space: nowrap;
+}
+.mg-tag[data-tone="ok"] { color: var(--mg-ok); border-color: currentColor; }
+.mg-tag[data-tone="warn"] { color: var(--mg-warn); border-color: currentColor; }
+
+.mg-note {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 11px 14px; border-radius: var(--mg-radius);
+  border: 1px solid var(--mg-line-strong);
+  font-size: 13px; color: var(--mg-ink-soft);
+}
+.mg-note svg { flex: none; margin-top: 2px; }
+.mg-note[data-tone="warn"] { border-color: var(--mg-warn); color: var(--mg-warn); }
+
+.mg-empty { text-align: left; max-width: 52ch; margin: 8px auto 0; }
+.mg-empty h1 { font-size: 20px; margin: 0 0 8px; }
+.mg-empty p { color: var(--mg-ink-soft); margin: 0 0 12px; }
+.mg-empty ol { color: var(--mg-ink-soft); padding-left: 20px; margin: 0 0 16px; }
+.mg-empty li { margin-bottom: 6px; }
+
+/* --------------------------------------------------------------- presets */
+
+.mg-presets { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); }
+.mg-preset {
+  display: grid; gap: 8px; text-align: left;
+  padding: 12px; border-radius: var(--mg-radius);
+  border: 1px solid var(--mg-line-strong); background: var(--mg-panel);
+  cursor: pointer;
+}
+.mg-preset:hover { border-color: var(--mg-accent); }
+.mg-preset .pname { font-weight: 650; font-size: 14px; }
+.mg-preset .pchar { font-size: 12px; color: var(--mg-muted); line-height: 1.45; }
+.mg-swatches { display: flex; gap: 4px; }
+.mg-swatch { width: 22px; height: 22px; border-radius: 5px; border: 1px solid rgba(0,0,0,0.12); flex: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mg * { transition: none !important; animation: none !important; }
+}
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Skeletons: a stable shape while data loads, not a spinner. The pulse is
+ * suppressed under reduced-motion by the rule further up. */
+.mg-skel {
+  display: block;
+  background: var(--mg-line);
+  border-radius: 6px;
+  animation: mg-pulse 1.4s ease-in-out infinite;
+}
+@keyframes mg-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mg-skel { animation: none; opacity: 0.8; }
+}
+
+/* The override marker must not push a field outside its grid column on narrow
+ * screens, so it is drawn inside the field's own box. */
+.mg-field[data-state="override"] {
+  border-left: 3px solid var(--mg-accent);
+  padding-left: 10px;
+  margin-left: 0;
+}
+
+/* Claim flow: numbered steps and the code the user copies into PluralKit. */
+.mg-steps { padding-left: 20px; margin: 0 0 12px; color: var(--mg-ink-soft); }
+.mg-steps li { margin-bottom: 10px; }
+.mg-code {
+  display: block;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--mg-line-strong);
+  border-radius: 6px;
+  background: var(--mg-bg);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 14px;
+  user-select: all;
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,40 @@
+import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import { BoxArrowUpRight } from "react-bootstrap-icons";
+import { isAuthenticated } from "@/lib/manage-api.ts";
+import { webConfig } from "@/lib/config.ts";
+
+export const metadata: Metadata = {
+  title: { default: "Manage", template: "%s · Manage · pkviewer" },
+  robots: { index: false, follow: false },
+};
+
+/**
+ * The management shell.
+ *
+ * Every /manage route requires a session, checked here so no page has to
+ * remember to. The server remains authoritative: this redirect is a courtesy
+ * for humans, and the API refuses unauthenticated calls regardless.
+ */
+export default async function ManageLayout({ children }: { children: React.ReactNode }) {
+  if (!(await isAuthenticated())) {
+    redirect("/login?return_to=/manage");
+  }
+
+  return (
+    <div className="mg">
+      <header className="mg-bar">
+        <a className="mg-brand" href="/manage">pkviewer</a>
+        <span className="mg-bar-note">Management</span>
+        <span className="spacer" />
+        <a className="btn" href={`${webConfig.publicOrigin}/`}>
+          Public site <BoxArrowUpRight aria-hidden="true" />
+        </a>
+        <form action="/manage/signout" method="post">
+          <button type="submit" className="ghost">Sign out</button>
+        </form>
+      </header>
+      {children}
+    </div>
+  );
+}

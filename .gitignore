@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.next/
+.next-prod/
+*.log
+
+# SQLite: the database and its WAL sidecars are never committed.
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Secrets. Only .env.example is tracked.
+.env
+.env.*
+!.env.example
