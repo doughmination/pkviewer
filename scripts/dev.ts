@@ -14,9 +14,30 @@
 import { spawn, type Subprocess } from "bun";
 
 const RESET = "\x1b[0m";
+
+// The port the web tier listens on. Next reads PORT itself, so it is passed
+// through the environment rather than as a `-p` flag in the package script.
+// That is deliberate: bun's script shell does not implement ${VAR} expansion
+// on Windows, so `next dev -p ${WEB_PORT:-3000}` reached Next as that literal
+// string and the web tier refused to start. Keeping the default here leaves
+// the package scripts free of shell syntax entirely.
+const WEB_PORT = process.env["WEB_PORT"] ?? "3000";
+
 const TIERS = [
-  { name: "api", colour: "\x1b[35m", cwd: "apps/api", cmd: ["bun", "run", "--hot", "src/index.ts"] },
-  { name: "web", colour: "\x1b[36m", cwd: "apps/web", cmd: ["bun", "run", "dev"] },
+  {
+    name: "api",
+    colour: "[35m",
+    cwd: "apps/api",
+    cmd: ["bun", "run", "--hot", "src/index.ts"],
+    env: {},
+  },
+  {
+    name: "web",
+    colour: "[36m",
+    cwd: "apps/web",
+    cmd: ["bun", "run", "dev"],
+    env: { PORT: WEB_PORT },
+  },
 ] as const;
 
 const children: Subprocess[] = [];
@@ -63,7 +84,7 @@ for (const tier of TIERS) {
     cwd: tier.cwd,
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, FORCE_COLOR: "1" },
+    env: { ...process.env, FORCE_COLOR: "1", ...tier.env },
     onExit(_proc, exitCode) {
       if (shuttingDown) return;
       console.log(`${tier.colour}[${tier.name}]${RESET} exited (${exitCode ?? "signal"})`);

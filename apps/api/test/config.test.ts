@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { buildUserAgent, ConfigError, loadConfig } from "../src/config/index.ts";
 import { PKVIEWER_VERSION } from "../src/config/version.ts";
@@ -146,5 +148,38 @@ describe("beta readiness", () => {
     } catch (err) {
       expect(String(err)).toContain("PK_USER_AGENT_CONTACT");
     }
+  });
+});
+
+// .env.example is the first thing a fresh checkout copies into place, so a
+// placeholder left in it becomes a live value on somebody's machine. This one
+// matters more than most: PK_USER_AGENT_CONTACT is the contact URL PluralKit
+// is given for every request we make (P1), and shipping an unresolvable one
+// hands them a dead link instead of a way to reach us.
+describe("the example environment file", () => {
+  const exampleEnv = readFileSync(join(import.meta.dir, "..", "..", "..", ".env.example"), "utf8");
+
+  const exampleValue = (key: string): string => {
+    const match = exampleEnv.match(new RegExp(`^${key}=(.*)$`, "m"));
+    if (!match?.[1]) throw new Error(`${key} is missing or empty in .env.example`);
+    return match[1].trim();
+  };
+
+  test("ships a PluralKit contact URL that config accepts", () => {
+    expect(() =>
+      loadConfig({ ...base, PK_USER_AGENT_CONTACT: exampleValue("PK_USER_AGENT_CONTACT") }),
+    ).not.toThrow();
+  });
+
+  // A placeholder is spelled in capitals precisely so a human notices it, which
+  // makes it the one thing we can detect mechanically. Real path segments here
+  // are repository owners and names, which are not upper-case.
+  test("ships no placeholder in the PluralKit contact URL", () => {
+    const url = new URL(exampleValue("PK_USER_AGENT_CONTACT"));
+    const placeholders = url.pathname
+      .split("/")
+      .filter((segment) => segment.length > 0 && segment === segment.toUpperCase());
+    expect(placeholders).toEqual([]);
+    expect(url.pathname).not.toBe("/");
   });
 });

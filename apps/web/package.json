@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p ${WEB_PORT:-3000}",
+    "dev": "next dev",
     "build": "NEXT_DIST_DIR=.next-prod next build",
-    "start": "NEXT_DIST_DIR=.next-prod next start -p ${WEB_PORT:-3000}",
+    "start": "NEXT_DIST_DIR=.next-prod next start",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
