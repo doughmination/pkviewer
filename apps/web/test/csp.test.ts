@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { CSS_URL_HOSTS } from "@pkviewer/shared";
 
 /**
  * The content security policy is not covered by any request-level test, because
@@ -58,3 +59,28 @@ describe("content security policy", () => {
     expect(config).toMatch(/isProduction[\s\S]{0,300}Strict-Transport-Security/);
   });
 });
+
+/**
+ * The CSP and the CSS compiler must permit the same hosts.
+ *
+ * They are two independent gates on the same thing, and disagreement is silent
+ * in the direction that matters: a font the compiler allows and the CSP blocks
+ * simply never loads, with nothing in the editor to say why. The compiler is
+ * the security boundary; this keeps the browser from quietly overruling it.
+ */
+describe("custom CSS hosts", () => {
+  test("every host the compiler allows can actually be reached", () => {
+    const fetchable = CSS_URL_HOSTS.filter((h) => h !== "fonts.googleapis.com");
+    for (const host of fetchable) {
+      expect(config, host).toContain(`https://${host}`);
+    }
+    // Stylesheets rather than fonts, so this one lives in style-src.
+    expect(config).toMatch(/style-src[^;]*https:\/\/fonts\.googleapis\.com/);
+  });
+
+  test("font-src names the hosts custom CSS can load faces from", () => {
+    expect(config).toMatch(/font-src[^;]*https:\/\/fonts\.gstatic\.com/);
+    expect(config).toMatch(/font-src[^;]*https:\/\/m\.doughmination\.gay/);
+  });
+});
+

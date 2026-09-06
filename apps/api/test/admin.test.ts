@@ -772,3 +772,117 @@ describe("custom CSS reaches the page compiled, never raw", () => {
     expect(readCss(db, "system", systemId).source).toBe(".a { color: #fff }");
   });
 });
+
+/**
+ * A member's stylesheet layers over the system's.
+ *
+ * Same shape as the layout feature that was once fully editable and never
+ * reached a page, so this follows a member stylesheet all the way to the model
+ * — and checks the ORDER, since a member overriding the system depends on
+ * theirs coming second.
+ */
+describe("member CSS", () => {
+  const SYS3 = {
+    id: "tythty",
+    uuid: "8b0655f4-055a-46b9-a5fc-a099e8a6b810",
+    name: "Doughmination",
+    description: null,
+  };
+  const MEMBER = {
+    id: "kzsbyo",
+    uuid: "mu-1",
+    name: "Clove",
+    display_name: null,
+    pronouns: null,
+    birthday: null,
+    description: null,
+    avatar_url: null,
+    banner: null,
+    color: null,
+    created: null,
+  };
+
+  function client(): PkClient {
+    const impl = (async (input: string | URL) => {
+      const path = String(input).replace("https://api.pluralkit.me/v2", "");
+      if (path.endsWith("/members")) return Response.json([MEMBER]);
+      return Response.json(SYS3);
+    }) as unknown as typeof fetch;
+    return new PkClient({
+      apiBase: "https://api.pluralkit.me/v2",
+      userAgent: "pkviewer/test (+https://github.com/owner/pkviewer)",
+      readRps: 1000,
+      writeRps: 1000,
+      fetchImpl: impl,
+      snapshots: new MemorySnapshotStore(),
+      sleep: async () => {},
+      maxRetries: 0,
+    });
+  }
+
+  function seed(): { systemId: string; memberId: string; owner: string } {
+    const owner = account();
+    const systemId = randomUUID();
+    const memberId = randomUUID();
+    db.query(
+      "INSERT INTO systems (id, pk_system_uuid, pk_system_hid, claimed_at, created_at) VALUES (?,?,?,?,?)",
+    ).run(systemId, SYS3.uuid, SYS3.id, NOW, NOW);
+    db.query(
+      "INSERT INTO members (id, system_id, pk_member_uuid, pk_member_hid, first_seen_at) VALUES (?,?,?,?,?)",
+    ).run(memberId, systemId, MEMBER.uuid, MEMBER.id, NOW);
+    manages(owner, systemId);
+    return { systemId, memberId, owner };
+  }
+
+  test("a member page carries the system stylesheet then the member's", async () => {
+    const { systemId, memberId, owner } = seed();
+    saveCss(db, { ownerType: "system", ownerId: systemId, source: ".card { color: #111 }", accountId: owner }, NOW);
+    saveCss(db, { ownerType: "member", ownerId: memberId, source: ".card { color: #222 }", accountId: owner }, NOW);
+
+    const page = await buildMemberPage({ db, pk: client() }, SYS3.id, MEMBER.id);
+    expect(page.ok).toBe(true);
+    if (page.ok) {
+      // Order decides the winner when specificity ties, so the member's must
+      // come last or overriding the system would not work at all.
+      expect(page.value.css.indexOf("#111")).toBeLessThan(page.value.css.indexOf("#222"));
+    }
+  });
+
+  test("a member stylesheet does not leak onto the system page", async () => {
+    const { systemId, memberId, owner } = seed();
+    saveCss(db, { ownerType: "member", ownerId: memberId, source: ".card { color: #222 }", accountId: owner }, NOW);
+    void systemId;
+
+    const page = await buildSystemPage({ db, pk: client() }, SYS3.id);
+    expect(page.ok && page.value.css).toBe("");
+  });
+
+  test("a member with no stylesheet still gets the system's", async () => {
+    const { systemId, owner } = seed();
+    saveCss(db, { ownerType: "system", ownerId: systemId, source: ".card { color: #111 }", accountId: owner }, NOW);
+
+    const page = await buildMemberPage({ db, pk: client() }, SYS3.id, MEMBER.id);
+    expect(page.ok && page.value.css).toContain("#111");
+  });
+
+  test("a member stylesheet is compiled with the same rules", async () => {
+    const { memberId, owner } = seed();
+    saveCss(
+      db,
+      {
+        ownerType: "member",
+        ownerId: memberId,
+        source: ".a { background-image: url(https://evil.example/x) }\n.b { color: #fff }",
+        accountId: owner,
+      },
+      NOW,
+    );
+
+    const page = await buildMemberPage({ db, pk: client() }, SYS3.id, MEMBER.id);
+    expect(page.ok).toBe(true);
+    if (page.ok) {
+      expect(page.value.css).not.toContain("evil.example");
+      expect(page.value.css).toContain("color: #fff");
+    }
+  });
+});

@@ -277,6 +277,39 @@ export function manageRoutes(deps: Deps): Hono {
   });
 
   /**
+   * A member's own stylesheet.
+   *
+   * Layered over the system's on a member page rather than replacing it, in the
+   * same order and for the same reason as the token vocabulary: a member starts
+   * from the system's look and overrides what they want different, instead of
+   * starting from nothing.
+   */
+  app.get("/systems/:systemId/members/:memberRef/css", async (c) => {
+    const ctx = withSystem(c);
+    if (ctx instanceof Response) return ctx;
+    const found = await ensureMemberRow(manageDeps, ctx.system, c.req.param("memberRef") ?? "");
+    if (!found) return c.json({ error: "not_found" }, 404);
+    return c.json(readCss(db, "member", found.memberId));
+  });
+
+  app.put("/systems/:systemId/members/:memberRef/css", async (c) => {
+    const ctx = withSystem(c);
+    if (ctx instanceof Response) return ctx;
+    const found = await ensureMemberRow(manageDeps, ctx.system, c.req.param("memberRef") ?? "");
+    if (!found) return c.json({ error: "not_found" }, 404);
+
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const result = saveCss(
+      db,
+      { ownerType: "member", ownerId: found.memberId, source: body["css"], accountId: ctx.accountId },
+      now(),
+    );
+    if (!result.ok) return c.json({ error: "invalid", issues: result.issues }, 422);
+    audit(db, now(), ctx.accountId, "css.member.saved", found.memberId);
+    return c.json({ ok: true, issues: result.issues, kept: result.kept });
+  });
+
+  /**
    * Recognition offered to this system.
    *
    * The recipient's half of a badge. Granting is an admin power; deciding

@@ -324,3 +324,18 @@ export async function saveSystemCss(systemId: string, css: string): Promise<CssS
   revalidatePath("/s", "layout");
   return { ok: true, issues: result.value.issues ?? [], kept: result.value.kept ?? 0 };
 }
+
+export async function saveMemberCss(
+  systemId: string,
+  memberRef: string,
+  css: string,
+): Promise<CssSaveResult> {
+  const result = await manageApi.put<{ issues?: CssIssue[]; kept?: number }>(
+    `/manage/systems/${systemId}/members/${encodeURIComponent(memberRef)}/css`,
+    { css },
+  );
+  if (!result.ok) return { ok: false, error: messageFor(result.error, result.status) };
+  revalidatePath(`/manage/${systemId}`, "layout");
+  revalidatePath("/s", "layout");
+  return { ok: true, issues: result.value.issues ?? [], kept: result.value.kept ?? 0 };
+}

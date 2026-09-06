@@ -54,9 +54,13 @@ const CSP = [
   "object-src 'none'",
   scriptSrc,
   // Theme tokens are emitted as a scoped <style> element, and Google Fonts
-  // serves the allow-listed families.
+  // serves the allow-listed families. Custom CSS may `@import` from
+  // fonts.googleapis.com, which is already named here.
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com",
+  // Custom CSS may load fonts from the same two hosts the compiler permits, so
+  // this list and CSS_URL_HOSTS have to agree — a font the compiler allows and
+  // the CSP blocks fails silently in the browser, which is the worst of both.
+  "font-src 'self' https://fonts.gstatic.com https://m.doughmination.gay",
   "img-src 'self' https: data:",
   connectSrc,
   "manifest-src 'self'",

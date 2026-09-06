@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { ArrowLeft, BoxArrowUpRight } from "react-bootstrap-icons";
+import { ArrowLeft, BoxArrowUpRight, CodeSlash } from "react-bootstrap-icons";
 import { resolveTheme, THEME_TOKENS } from "@pkviewer/shared";
 import { SlugEditor, type SlugStatus } from "@/components/manage/SlugEditor.tsx";
 import { SocialLinksEditor } from "@/components/manage/SocialLinksEditor.tsx";
@@ -96,6 +96,12 @@ export default async function MemberPage({
         </a>{" "}
         <a className="btn" href={publicUrl} target="_blank" rel="noopener">
           Open public page <BoxArrowUpRight aria-hidden="true" />
+        </a>{" "}
+        <a
+          className="btn"
+          href={`/manage/${systemId}/members/${encodeURIComponent(memberRef)}/css`}
+        >
+          <CodeSlash aria-hidden="true" /> Advanced CSS
         </a>
       </p>
 

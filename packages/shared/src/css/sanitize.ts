@@ -46,6 +46,7 @@ export type CssIssue = {
     | "value_not_allowed"
     | "selector_not_allowed"
     | "protected_selector"
+    | "url_not_allowed"
     | "important_not_allowed"
     | "unparsable";
   detail: string;
@@ -69,6 +70,11 @@ export type CssResult = {
 const ALLOWED_PROPERTIES = new Set([
   // colour and text
   "color", "background-color", "opacity",
+  // These carry url(), which is checked per-URL against CSS_URL_HOSTS. That is
+  // what makes the CDN useful for more than fonts.
+  "background-image", "background", "background-position", "background-size",
+  "background-repeat", "background-attachment", "background-clip", "background-origin",
+  "list-style-image",
   "font-family", "font-size", "font-style", "font-weight", "font-variant",
   "line-height", "letter-spacing", "word-spacing",
   "text-align", "text-decoration", "text-decoration-color", "text-decoration-line",
@@ -116,12 +122,65 @@ const ALLOWED_PROPERTIES = new Set([
 ]);
 
 /**
+ * Hosts a stylesheet may fetch from.
+ *
+ * `url()` was refused outright at first, because it is how CSS exfiltrates: an
+ * attribute selector paired with a background image reports what it matched,
+ * one request per guess. Host allow-listing is what makes it safe to reopen —
+ * a leak still needs somewhere to arrive, and an author cannot read the request
+ * logs of Google Fonts or of pkviewer's own CDN. The technique survives; its
+ * destination does not.
+ *
+ * Matched on the exact hostname, never a suffix, so
+ * `fonts.googleapis.com.evil.example` and `https://fonts.googleapis.com@evil.example`
+ * are both simply other hosts.
+ *
+ * Every entry here costs something: visitors' addresses reach it whenever a
+ * page using it is viewed. These are hosts pkviewer already asks visitors to
+ * contact for its own fonts, so the list adds no party that was not already
+ * involved. Adding one that logs per-request and is readable by an author would
+ * hand the exfiltration vector straight back.
+ */
+export const CSS_URL_HOSTS: readonly string[] = [
+  "fonts.googleapis.com",
+  "fonts.gstatic.com",
+  "m.doughmination.gay",
+];
+
+/**
  * Values refused wherever they appear.
  *
- * `url()` is the exfiltration and tracking vector and has no safe form here.
- * The rest are legacy script-execution surfaces that cost nothing to refuse.
+ * Legacy script-execution surfaces that cost nothing to refuse. `url()` is no
+ * longer here — it is checked per-URL against the host list instead.
  */
-const FORBIDDEN_VALUE = /url\s*\(|expression\s*\(|behaviou?r\s*:|-moz-binding|javascript\s*:|image-set\s*\(|@import|\\[0-9a-f]/i;
+const FORBIDDEN_VALUE = /expression\s*\(|behaviou?r\s*:|-moz-binding|javascript\s*:|image-set\s*\(|\\[0-9a-f]/i;
+
+const URL_TOKEN = /url\s*\(\s*(['"]?)([^'")]*)\1\s*\)/gi;
+
+/**
+ * True when every `url()` in a value points at an allow-listed https host.
+ *
+ * Parsed with `URL` rather than matched with a pattern: a regex over a URL is
+ * how host checks get bypassed, and `new URL()` agrees with the browser about
+ * what the host actually is.
+ */
+export function urlsAllowed(value: string): boolean {
+  for (const match of value.matchAll(URL_TOKEN)) {
+    const raw = (match[2] ?? "").trim();
+    if (!raw) return false;
+    let parsed: URL;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      // Protocol-relative and relative URLs both land here. Refusing them keeps
+      // "which host is this" from depending on where the page was served.
+      return false;
+    }
+    if (parsed.protocol !== "https:") return false;
+    if (!CSS_URL_HOSTS.includes(parsed.hostname)) return false;
+  }
+  return true;
+}
 
 /**
  * The compiled stylesheet is placed inside a <style> element, and `</style>`
@@ -158,7 +217,34 @@ const SELECTOR_SHAPE = /^[a-zA-Z0-9\s.,:#_\-[\]="'()>+~*]+$/;
 /** Selectors that would reach outside the content area even when scoped. */
 const SELECTOR_FORBIDDEN = /(^|[\s,>+~])(html|body|:root)\b|::part|::slotted|:host/i;
 
-const ALLOWED_AT_RULES = new Set(["media", "supports"]);
+const ALLOWED_AT_RULES = new Set(["media", "supports", "font-face"]);
+
+/**
+ * `@font-face` descriptors. Not properties — a different vocabulary entirely,
+ * which is why it gets its own list rather than reusing ALLOWED_PROPERTIES.
+ */
+const FONT_FACE_DESCRIPTORS = new Set([
+  "font-family", "src", "font-weight", "font-style", "font-stretch",
+  "font-display", "font-variant", "font-feature-settings",
+  "font-variation-settings", "unicode-range", "size-adjust",
+  "ascent-override", "descent-override", "line-gap-override",
+]);
+
+/**
+ * `@import` is allowed from Google Fonts and nowhere else.
+ *
+ * This is the one thing pkviewer serves without compiling, and it is worth
+ * being plain about: the stylesheet that arrives is whatever that host returns.
+ * It is permitted because copying the `@import` line is how anyone actually
+ * uses Google Fonts, and because that host exists to return `@font-face` rules
+ * pointing at fonts.gstatic.com — both already on the allow-list, and both
+ * already contacted by pkviewer's own font loading.
+ *
+ * It is locked to that single host, not to the whole allow-list: the CDN serves
+ * arbitrary files, and importing an arbitrary file as a stylesheet would be a
+ * way to smuggle in rules that never met the compiler.
+ */
+const IMPORT_HOST = "fonts.googleapis.com";
 
 /**
  * What an at-rule prelude may contain.
@@ -220,6 +306,7 @@ function sanitizeDeclarations(
   source: string,
   offset: number,
   issues: CssIssue[],
+  vocabulary: ReadonlySet<string> = ALLOWED_PROPERTIES,
 ): { text: string; kept: number } {
   const out: string[] = [];
   let kept = 0;
@@ -254,7 +341,7 @@ function sanitizeDeclarations(
       issues.push({ line, kind: "important_not_allowed", detail: property });
       continue;
     }
-    if (!ALLOWED_PROPERTIES.has(property)) {
+    if (!vocabulary.has(property)) {
       issues.push({ line, kind: "property_not_allowed", detail: property });
       continue;
     }
@@ -266,7 +353,15 @@ function sanitizeDeclarations(
       issues.push({ line, kind: "value_not_allowed", detail: `${property}: ${value.slice(0, 40)}` });
       continue;
     }
-    if (property === "position" && !ALLOWED_POSITION.has(value.toLowerCase())) {
+    if (!urlsAllowed(value)) {
+      issues.push({ line, kind: "url_not_allowed", detail: `${property}: ${value.slice(0, 40)}` });
+      continue;
+    }
+    if (
+      vocabulary === ALLOWED_PROPERTIES &&
+      property === "position" &&
+      !ALLOWED_POSITION.has(value.toLowerCase())
+    ) {
       issues.push({ line, kind: "value_not_allowed", detail: `position: ${value}` });
       continue;
     }
@@ -315,6 +410,28 @@ export function sanitizeCss(input: unknown): CssResult {
   let i = 0;
 
   while (i < source.length) {
+    // A statement at-rule (`@import ...;`) ends at a semicolon and has no
+    // block. Without this the parser reads ahead to the NEXT rule's brace and
+    // swallows it whole.
+    const statement = /^\s*@([a-z-]+)([^;{}]*);/i.exec(source.slice(i));
+    if (statement) {
+      const name = statement[1]!.toLowerCase();
+      const rest = statement[2] ?? "";
+      const line = lineOf(source, i + (statement[0].length - statement[0].trimStart().length));
+      if (name === "import" && importAllowed(rest)) {
+        out.push(`@import ${rest.trim()};`);
+        kept++;
+      } else {
+        issues.push({
+          line,
+          kind: name === "import" ? "url_not_allowed" : "at_rule_not_allowed",
+          detail: `@${name}${rest}`.slice(0, 60),
+        });
+      }
+      i += statement[0].length;
+      continue;
+    }
+
     const open = source.indexOf("{", i);
     if (open === -1) {
       const trailing = source.slice(i).trim();
@@ -348,6 +465,25 @@ export function sanitizeCss(input: unknown): CssResult {
         i = close + 1;
         continue;
       }
+      if (name === "font-face") {
+        const face = sanitizeDeclarations(
+          source.slice(open + 1, close),
+          source,
+          open + 1,
+          issues,
+          FONT_FACE_DESCRIPTORS,
+        );
+        // A face whose `src` was refused has nothing left to load, so the whole
+        // block goes rather than leaving a declaration that names a family it
+        // cannot supply.
+        if (face.kept > 0 && /(^|\n)\s*src:/.test(face.text)) {
+          out.push(`@font-face {\n${face.text}\n}`);
+          kept += face.kept;
+        }
+        i = close + 1;
+        continue;
+      }
+
       // Recurse into the body: the rules inside are scoped exactly as they
       // would be outside, so a media query cannot smuggle an unscoped rule.
       const inner = sanitizeCss(source.slice(open + 1, close));
@@ -387,6 +523,19 @@ export function sanitizeCss(input: unknown): CssResult {
   return { css: out.join("\n\n"), issues, kept };
 }
 
+/** True for an `@import` naming a stylesheet on the one permitted host. */
+function importAllowed(rest: string): boolean {
+  const match = /url\s*\(\s*(['"]?)([^'")]*)\1\s*\)|^\s*(['"])([^'"]*)\3/i.exec(rest.trim());
+  const raw = (match?.[2] ?? match?.[4] ?? "").trim();
+  if (!raw) return false;
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === "https:" && parsed.hostname === IMPORT_HOST;
+  } catch {
+    return false;
+  }
+}
+
 /** Index of the `}` matching the `{` at `open`, or -1. */
 function matchBrace(source: string, open: number): number {
   let depth = 0;
@@ -407,6 +556,7 @@ export const CSS_ISSUE_MESSAGES: Readonly<Record<CssIssue["kind"], string>> = {
   value_not_allowed: "That value is not allowed here.",
   selector_not_allowed: "That selector is not allowed.",
   protected_selector: "Badges and the site notice cannot be restyled.",
+  url_not_allowed: "Only Google Fonts and the pkviewer CDN can be linked to.",
   important_not_allowed: "!important is not available.",
   unparsable: "This could not be read as CSS.",
 };

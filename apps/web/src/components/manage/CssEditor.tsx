@@ -5,7 +5,7 @@ import { BoxArrowUpRight, ExclamationTriangle } from "react-bootstrap-icons";
 import { CSS_ISSUE_MESSAGES, MAX_CSS_LENGTH, type CssIssue } from "@pkviewer/shared";
 import { PageHeader, Section } from "@/components/manage/Shell.tsx";
 import { SaveBar, type SaveState } from "@/components/manage/SaveBar.tsx";
-import { saveSystemCss } from "@/app/manage/actions.ts";
+import { saveMemberCss, saveSystemCss } from "@/app/manage/actions.ts";
 import { webConfig } from "@/lib/config.ts";
 
 /**
@@ -19,10 +19,13 @@ import { webConfig } from "@/lib/config.ts";
  */
 export function CssEditor({
   systemId,
+  memberRef,
   initialSource,
   initialIssues,
 }: {
   systemId: string;
+  /** Present for a member's own stylesheet; absent for the system's. */
+  memberRef?: string;
   initialSource: string;
   initialIssues: CssIssue[];
 }) {
@@ -39,7 +42,9 @@ export function CssEditor({
   const save = () => {
     setState("saving");
     startTransition(async () => {
-      const result = await saveSystemCss(systemId, source);
+      const result = memberRef
+        ? await saveMemberCss(systemId, memberRef, source)
+        : await saveSystemCss(systemId, source);
       if (!result.ok) {
         setState("error");
         return;
@@ -55,7 +60,11 @@ export function CssEditor({
     <>
       <PageHeader
         title="Advanced CSS"
-        description="Style your pages by hand. Everything else in this section is a supported control; this one lets you make a mess, and that is the point."
+        description={
+          memberRef
+            ? "Styles this member's page only, layered on top of your system stylesheet."
+            : "Styles every page in your system. Members can add their own on top."
+        }
         actions={
           <a className="btn" href={`${webConfig.docsUrl}/projects/pkviewer/css`} rel="noopener">
             CSS reference <BoxArrowUpRight aria-hidden="true" />
@@ -77,7 +86,7 @@ export function CssEditor({
       />
 
       <Section
-        title="Your stylesheet"
+        title={memberRef ? "This member's stylesheet" : "Your stylesheet"}
         description="Selectors are scoped to your page automatically — write `.card`, not `#pkv-user .card`."
       >
         <div className="mg-field">
@@ -148,6 +157,12 @@ export function CssEditor({
             <strong>Badges and the site notice cannot be restyled.</strong> They
             are pkviewer&apos;s statements, not part of your page&apos;s
             appearance.
+          </li>
+          <li>
+            <strong>Links only to Google Fonts and the pkviewer CDN.</strong>{" "}
+            <code>@import</code> a font, or point <code>background-image</code>{" "}
+            at the CDN. Anywhere else is refused, so a page cannot report its
+            visitors to a third party.
           </li>
         </ul>
         <p className="mg-hint">
