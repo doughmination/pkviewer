@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { openDb, writeTx } from "../src/db/index.ts";
+import { randomUUID } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { openDb, writeTx, type Db } from "../src/db/index.ts";
 import { migrate } from "../src/db/migrate.ts";
 
 function freshDb() {
@@ -239,5 +242,102 @@ describe("account deletion", () => {
         .run("b", "sys-1", now),
     ).toThrow(/UNIQUE/i);
     db.close();
+  });
+});
+
+/**
+ * Migrations must survive a database that has been USED.
+ *
+ * Every migration test here applies the whole set to an empty database, and
+ * that is exactly what let migration 008 ship broken: it rebuilt `badges`, and
+ * the rename collides only when `foreign_keys = ON` and a row in
+ * `subject_badges` already references it. Empty database, no child row, no
+ * collision, green tests — and a crash-looping API on the first deployment
+ * that had granted a badge.
+ *
+ * So these apply migrations in two halves with realistic data seeded in
+ * between, which is the only arrangement that can catch a data-dependent
+ * migration.
+ */
+describe("migrations against a database in use", () => {
+  const dir = join(import.meta.dir, "..", "src", "db", "migrations");
+
+  function applyUpTo(db: Db, exclusive: string): void {
+    db.exec(
+      "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL) STRICT",
+    );
+    for (const name of readdirSync(dir).filter((f) => f.endsWith(".sql") && f < exclusive).sort()) {
+      writeTx(db, (tx) => {
+        tx.exec(readFileSync(join(dir, name), "utf8"));
+        tx.query("INSERT INTO schema_migrations (name, applied_at) VALUES (?,?)").run(name, 1);
+      });
+    }
+  }
+
+  /** A row in every table a later migration might touch or reference. */
+  function seed(db: Db): { accountId: string; systemId: string } {
+    const accountId = randomUUID();
+    const systemId = randomUUID();
+    db.query("INSERT INTO accounts (id, created_at) VALUES (?,?)").run(accountId, 1);
+    db.query(
+      "INSERT INTO systems (id, pk_system_uuid, pk_system_hid, claimed_at, created_at) VALUES (?,?,?,?,?)",
+    ).run(systemId, randomUUID(), "abcdef", 1, 1);
+    db.query(
+      `INSERT INTO grants (account_id, subject_type, subject_id, role, granted_at)
+       VALUES (?, 'system', ?, 'owner', 1)`,
+    ).run(accountId, systemId);
+    return { accountId, systemId };
+  }
+
+  test("008 applies to a database that already holds a granted badge", () => {
+    const db = openDb(":memory:");
+    applyUpTo(db, "008");
+    const { accountId, systemId } = seed(db);
+    // The child row is the whole point: without it the old migration passed.
+    db.query(
+      `INSERT INTO subject_badges (subject_type, subject_id, badge_id, state, granted_at, granted_by)
+       VALUES ('system', ?, 'owner', 'pending', 1, ?)`,
+    ).run(systemId, accountId);
+
+    expect(() => migrate(db, dir)).not.toThrow();
+
+    // And it did what it was for.
+    expect(
+      db.query<{ state: string }, []>("SELECT state FROM subject_badges").get()?.state,
+    ).toBe("accepted");
+    expect(
+      db.query<{ name: string }, []>("PRAGMA table_info(badges)").all().map((c) => c.name),
+    ).not.toContain("consent_required");
+  });
+
+  // Dropping and recreating a table drops its indexes with it. A migration that
+  // rebuilds must put them back, and one that avoids rebuilding must not lose
+  // them either.
+  test("badge indexes survive the migration", () => {
+    const db = openDb(":memory:");
+    migrate(db, dir);
+    const indexes = db
+      .query<{ name: string }, []>(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'badges'",
+      )
+      .all()
+      .map((r) => r.name);
+    expect(indexes).toContain("idx_badges_order");
+  });
+
+  /**
+   * Foreign keys are ON in production, and that is what made 008 fail. Any
+   * future migration touching a table with children faces the same thing, so
+   * this asserts the whole set applies with enforcement on and data present.
+   */
+  test("the whole set applies with foreign keys enforced and rows present", () => {
+    const db = openDb(":memory:");
+    expect(
+      db.query<{ foreign_keys: number }, []>("PRAGMA foreign_keys").get()?.foreign_keys,
+    ).toBe(1);
+
+    applyUpTo(db, "005");
+    seed(db);
+    expect(() => migrate(db, dir)).not.toThrow();
   });
 });

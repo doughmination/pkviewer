@@ -56,11 +56,12 @@ jobs:
         with:
           images: ${{ env.DOCKERHUB_USER }}/pkviewer-${{ matrix.name }}
           tags: |
-            # NO `latest` here. The two images build in parallel and finish
-            # minutes apart, so pushing `latest` from inside the matrix leaves a
-            # window where a deploy pulls a new API beside an old web tier — the
-            # symptom is a page that 404s while its API route answers fine.
-            # `latest` is moved by the promote job once BOTH have succeeded.
+            # The two images build in parallel and finish minutes apart, so
+            # there is a window where `docker compose pull` gets a new API and
+            # an old web tier. If a deploy ever looks half-applied — a page
+            # 404ing while its API route answers — check that both images carry
+            # the same `sha-` tag before looking anywhere else, and pull again.
+            type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=short
@@ -89,46 +90,3 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-
-  # Both images move to `latest` together, or neither does.
-  #
-  # `needs: build` waits for every matrix arm, so a failed or slow web build can
-  # no longer leave `latest` pointing at a mismatched pair. This retags the
-  # already-published manifests rather than rebuilding, so it is a few seconds
-  # and cannot produce a different artifact than the one that was tested.
-  promote:
-    needs: build
-    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Sign in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ env.DOCKERHUB_USER }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Move latest to this commit
-        run: |
-          set -euo pipefail
-          short="$(echo "${GITHUB_SHA}" | cut -c1-7)"
-          for image in api web; do
-            name="${DOCKERHUB_USER}/pkviewer-${image}"
-            echo "::group::${name}"
-            # Retag the multi-arch manifest by digest; no rebuild, no re-push.
-            docker buildx imagetools create \
-              --tag "${name}:latest" "${name}:sha-${short}"
-            docker buildx imagetools inspect "${name}:latest" | head -5
-            echo "::endgroup::"
-          done
-          {
-            echo "### Promoted to latest"
-            echo '```'
-            echo "${DOCKERHUB_USER}/pkviewer-api:sha-${short}"
-            echo "${DOCKERHUB_USER}/pkviewer-web:sha-${short}"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"

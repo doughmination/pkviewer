@@ -9,7 +9,7 @@
 --
 -- That carve-out is now the rule. Every badge is accepted on arrival and the
 -- recipient turns it off if they want to, so `consent_required` has nothing
--- left to say and the column goes rather than sitting at a constant.
+-- left to say.
 --
 -- The trade is real and worth stating: a badge can now appear on somebody's
 -- page before they have seen it. What makes that acceptable is that removal
@@ -18,35 +18,36 @@
 -- changed is the default, not the control.
 --
 -- `pending` stays in the state CHECK. Nothing writes it now, but rebuilding
--- subject_badges to forbid a state no row holds would be churn for nothing,
--- and the column would then disagree with the audit log's history.
+-- subject_badges to forbid a state no row holds would be churn for nothing.
+--
+-- ------------------------------------------------- why DROP COLUMN, not a rebuild --
+--
+-- The first version of this migration rebuilt `badges` the way 005 rebuilds
+-- `grants`: create, copy, drop, rename. It passed every test and failed on the
+-- first deployment that had actually granted a badge, with
+--
+--     SQLiteError: there is already another table or index with this name: badges
+--
+-- The rename collides only when `foreign_keys = ON` AND a row in
+-- `subject_badges` references `badges`. Dropping a parent table that a child
+-- row still points at leaves the name in a state the following rename cannot
+-- take. 005 survives the same pattern purely because nothing references
+-- `grants`.
+--
+-- The standard remedy is `PRAGMA foreign_keys = OFF` around the rebuild, and
+-- it does not work here: migrations run inside a transaction and that pragma
+-- is a no-op inside one. Turning enforcement off for every migration would be
+-- worse than the problem.
+--
+-- So: no rebuild. Dropping one column needs no new table, cannot collide with
+-- anything, and keeps `idx_badges_order` intact.
 
 UPDATE subject_badges
    SET state = 'accepted',
        responded_at = COALESCE(responded_at, granted_at)
  WHERE state = 'pending';
 
-CREATE TABLE badges_new (
-  id          TEXT PRIMARY KEY,
-  label       TEXT NOT NULL,
-  description TEXT NOT NULL,
-  icon        TEXT NOT NULL,
-  tone        TEXT NOT NULL,
-  sort_order  INTEGER NOT NULL DEFAULT 0,
-  retired_at  INTEGER,
-  created_at  INTEGER NOT NULL
-) STRICT;
-
-INSERT INTO badges_new (id, label, description, icon, tone, sort_order, retired_at, created_at)
-SELECT id, label, description, icon, tone, sort_order, retired_at, created_at FROM badges;
-
-DROP TABLE badges;
-ALTER TABLE badges_new RENAME TO badges;
-
--- Rebuilt with the table, exactly as 005 defined it. A partial or plain index
--- is dropped along with the table it sits on, and forgetting one here would be
--- invisible until the catalogue grew.
-CREATE INDEX idx_badges_order ON badges(sort_order, id);
+ALTER TABLE badges DROP COLUMN consent_required;
 
 -- ------------------------------------------------------------ EA bug hunter --
 --

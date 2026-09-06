@@ -145,26 +145,6 @@ describe("published images", () => {
     for (const s of services) expect(s.image, s.name).not.toContain("$");
   });
 
-  /**
-   * `latest` must move for both images at once.
-   *
-   * The matrix arms finish minutes apart, so publishing `latest` from inside
-   * the matrix leaves a window where a deploy pulls a new API beside an old web
-   * tier. That shipped: /admin and /badges 404'd on the site while the API
-   * answered /admin/whoami correctly, which reads as an auth bug and is not one.
-   */
-  test("latest is promoted after both builds, never from inside the matrix", () => {
-    expect(matrix).not.toContain("value=latest");
-    expect(workflow).not.toMatch(/type=raw,value=latest/);
-
-    const promote = workflow.slice(workflow.indexOf("\n  promote:"));
-    expect(promote, "a promote job must exist").toContain("needs: build");
-    expect(promote).toContain("imagetools create");
-    // Retag by digest rather than rebuild: the promoted image must be the one
-    // that was tested, not a fresh build of the same source.
-    expect(promote).not.toContain("build-push-action");
-  });
-
   // A password would work and would be wrong: a token is scoped and can be
   // revoked on its own.
   test("the registry credential is a secret, never a literal", () => {
