@@ -189,7 +189,12 @@ code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.88em
 .socials { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); padding: 0; margin: 0; list-style: none; }
 .socials a { display: inline-flex; align-items: center; gap: var(--sp-2); }
 
+/* The third-party disclosure is not the author's to remove. Same mechanism as
+ * the badges: locked with !important, which author CSS cannot use. */
 .site-footer {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
   margin-top: var(--sp-12);
   padding-top: var(--sp-4);
   border-top: 1px solid var(--pkv-color-border);
@@ -219,8 +224,18 @@ code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.88em
  * hand a system control over how pkviewer describes it.
  * ========================================================================== */
 
+/* The identity properties carry !important, and custom CSS may not use it.
+ *
+ * Scoping author CSS under #pkv-user is not enough on its own: badges live
+ * inside that root, so `* { display: none }` reaches them without ever naming
+ * a badge class. Specificity is the wrong tool — an author can always write a
+ * longer selector — but !important sits above specificity entirely, and the
+ * compiler refuses !important in author CSS. Only what a badge IS is locked;
+ * everything else stays ordinary. */
 .pkvb-row {
-  display: flex;
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
   flex-wrap: wrap;
   gap: 6px;
   padding: 0;
@@ -233,17 +248,19 @@ code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.88em
   --pkvb-bg: #5B6472;
   --pkvb-edge: rgba(0, 0, 0, 0.18);
 
-  display: inline-flex;
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
   align-items: center;
   gap: 5px;
   padding: 3px 10px 3px 8px;
   border: 1px solid var(--pkvb-edge);
-  border-radius: 999px;
-  background: var(--pkvb-bg);
-  color: var(--pkvb-ink);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-size: 12.5px;
-  font-weight: 600;
+  border-radius: 999px !important;
+  background: var(--pkvb-bg) !important;
+  color: var(--pkvb-ink) !important;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
   line-height: 1.4;
   letter-spacing: 0.01em;
   text-decoration: none;
@@ -267,7 +284,7 @@ a.pkvb:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .pkvb[data-tone="slate"]  { --pkvb-bg: #4A5261; }
 
 .badge-glossary { display: grid; gap: var(--sp-4); padding: 0; margin: 0; list-style: none; }
-.badge-glossary > li { display: flex; flex-direction: column; gap: var(--sp-1); align-items: start; }
+.badge-glossary > li { display: flex; flex-direction: column; gap: var(--sp-1); align-items: flex-start; }
 .badge-glossary p { margin: 0; }
 
 .credit-list { display: grid; gap: var(--sp-2); padding: 0; margin: 0; list-style: none; }
@@ -437,7 +454,7 @@ a.pkvb:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
 .mg-layout { display: grid; grid-template-columns: 1fr; gap: var(--mg-5); }
 @media (min-width: 900px) {
-  .mg-layout { grid-template-columns: 216px minmax(0, 1fr); gap: var(--mg-6); align-items: start; }
+  .mg-layout { grid-template-columns: 216px minmax(0, 1fr); gap: var(--mg-6); align-items: flex-start; }
 }
 
 /* Section nav. A column on wide screens, a horizontal rail on narrow ones —
@@ -918,7 +935,7 @@ a.mg-item:hover .mg-chevron { color: var(--mg-accent); }
 .mg-stats li { color: var(--mg-muted); font-size: 13.5px; }
 .mg-stats strong { display: block; font-size: 20px; color: var(--mg-ink); }
 
-.mg-row { display: flex; flex-wrap: wrap; gap: var(--mg-3); align-items: start; }
+.mg-row { display: flex; flex-wrap: wrap; gap: var(--mg-3); align-items: flex-start; }
 .mg-row > .grow { flex: 1 1 12rem; }
 
 .mg-hint { margin: 0; font-size: 12.5px; color: var(--mg-muted); line-height: 1.45; }
@@ -960,3 +977,25 @@ a.mg-item:hover .mg-chevron { color: var(--mg-accent); }
   color: var(--mg-danger);
 }
 .mg-note[data-tone="ok"] { border-color: color-mix(in srgb, var(--mg-ok) 45%, transparent); }
+
+/* The CSS editor. A code field is a different thing from a text field: it is
+ * read as a grid, so it needs a monospaced face and a tab that means tab. */
+.mg-code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  tab-size: 2;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+  min-height: 20rem;
+  resize: vertical;
+}
+
+.mg-plain { display: grid; gap: var(--mg-2); padding: 0; margin: 0; list-style: none; }
+.mg-plain li { color: var(--mg-muted); font-size: 13.5px; line-height: 1.5; }
+.mg-plain strong { color: var(--mg-ink); }
+.mg-plain code, .mg-item-meta code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+}

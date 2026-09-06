@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ArrowLeft, PersonCircle } from "react-bootstrap-icons";
+import { CustomStyle } from "@/components/CustomStyle.tsx";
 import { SiteDisclosure, StaleNotice } from "@/components/Notices.tsx";
 import { SocialLinks } from "@/components/SocialLinks.tsx";
 import { ThemeFonts } from "@/components/ThemeFonts.tsx";
@@ -61,7 +62,7 @@ export default async function MemberPage({ params }: Params) {
     );
   }
 
-  const { system, member, socials, tokens, composition } = result.value;
+  const { system, member, socials, tokens, composition, css } = result.value;
   if (!member) notFound();
 
   const showBanner = composition["banner.display"] !== "hidden";
@@ -84,6 +85,8 @@ export default async function MemberPage({ params }: Params) {
         colorScheme={theme.colorScheme}
         scope=":root"
       />
+
+      <CustomStyle css={css} />
 
       {system.staleSinceMs !== null ? <StaleNotice staleSinceMs={system.staleSinceMs} /> : null}
 

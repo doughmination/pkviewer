@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PeopleFill, PersonCircle } from "react-bootstrap-icons";
 import { BadgeRow } from "@/components/Badges.tsx";
+import { CustomStyle } from "@/components/CustomStyle.tsx";
 import { MemberDirectory } from "@/components/MemberDirectory.tsx";
 import { SiteDisclosure, StaleNotice } from "@/components/Notices.tsx";
 import { SocialLinks } from "@/components/SocialLinks.tsx";
@@ -63,7 +64,7 @@ export default async function SystemPage({ params }: Params) {
     );
   }
 
-  const { system, members, socials, tokens, composition, badges } = result.value;
+  const { system, members, socials, tokens, composition, badges, css } = result.value;
   const name = system.name ?? system.hid;
   const theme = buildPageTheme(tokens, null, composition);
   const showBanner = composition["banner.display"] !== "hidden";
@@ -78,6 +79,8 @@ export default async function SystemPage({ params }: Params) {
         colorScheme={theme.colorScheme}
         scope=":root"
       />
+
+      <CustomStyle css={css} />
 
       {system.staleSinceMs !== null ? <StaleNotice staleSinceMs={system.staleSinceMs} /> : null}
 

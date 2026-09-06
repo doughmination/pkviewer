@@ -9,6 +9,7 @@ import {
   type SocialUrlFailure,
   type ValidationFailure,
 } from "@pkviewer/shared";
+import { sanitizeCss, type CssIssue } from "@pkviewer/shared";
 import { accountManagesSystem } from "../claims/index.ts";
 import type { Db } from "../db/index.ts";
 import { writeTx } from "../db/index.ts";
@@ -473,4 +474,99 @@ export function saveSocialLinks(
   });
 
   return { ok: true, saved: clean.length };
+}
+
+// ------------------------------------------------------------ custom CSS --
+
+export type StoredCss = { source: string; issues: CssIssue[]; kept: number };
+
+/** The author's own text, plus what the last compile made of it. */
+export function readCss(db: Db, ownerType: "system" | "member", ownerId: string): StoredCss {
+  const row = db
+    .query<{ css_source: string | null; css_errors: string | null }, [string, string]>(
+      `SELECT css_source, css_errors FROM themes
+        WHERE owner_type = ? AND owner_id = ? AND deleted_at IS NULL`,
+    )
+    .get(ownerType, ownerId);
+  if (!row) return { source: "", issues: [], kept: 0 };
+
+  let issues: CssIssue[] = [];
+  try {
+    issues = row.css_errors ? (JSON.parse(row.css_errors) as CssIssue[]) : [];
+  } catch {
+    issues = [];
+  }
+  return { source: row.css_source ?? "", issues, kept: 0 };
+}
+
+/** Compiled CSS for a public page. Empty when there is none. */
+export function compiledCssFor(
+  db: Db,
+  ownerType: "system" | "member",
+  ownerId: string | null,
+): string {
+  if (!ownerId) return "";
+  const row = db
+    .query<{ css_compiled: string | null }, [string, string]>(
+      `SELECT css_compiled FROM themes
+        WHERE owner_type = ? AND owner_id = ? AND deleted_at IS NULL`,
+    )
+    .get(ownerType, ownerId);
+  return row?.css_compiled ?? "";
+}
+
+/**
+ * Compiles and stores custom CSS.
+ *
+ * Compilation happens HERE, on save, and the compiled text is what a page
+ * reads. Compiling at render time would put an author's input on the hot path
+ * of every visit, and would mean the thing served could drift from the thing
+ * that was checked.
+ *
+ * A stylesheet with problems is still saved: the author keeps their text and
+ * the valid rules apply, with the rejected ones reported. Refusing the whole
+ * thing over one bad line would lose work.
+ */
+export function saveCss(
+  db: Db,
+  params: { ownerType: "system" | "member"; ownerId: string; source: unknown; accountId: string },
+  now: number,
+): { ok: true; issues: CssIssue[]; kept: number } | { ok: false; issues: CssIssue[] } {
+  const result = sanitizeCss(params.source);
+  const source = typeof params.source === "string" ? params.source : "";
+
+  // Only a whole-stylesheet refusal blocks the write; per-rule problems do not.
+  if (result.issues.some((i) => i.kind === "too_long")) {
+    return { ok: false, issues: result.issues };
+  }
+
+  writeTx(db, (tx) => {
+    tx.query(
+      `INSERT INTO themes (owner_type, owner_id, schema_version, css_source, css_compiled, css_hash, css_errors, updated_at, updated_by)
+       VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (owner_type, owner_id) DO UPDATE SET
+         css_source = excluded.css_source,
+         css_compiled = excluded.css_compiled,
+         css_hash = excluded.css_hash,
+         css_errors = excluded.css_errors,
+         updated_at = excluded.updated_at,
+         updated_by = excluded.updated_by`,
+    ).run(
+      params.ownerType,
+      params.ownerId,
+      source,
+      result.css,
+      hashOf(result.css),
+      result.issues.length > 0 ? JSON.stringify(result.issues) : null,
+      now,
+      params.accountId,
+    );
+  });
+
+  return { ok: true, issues: result.issues, kept: result.kept };
+}
+
+function hashOf(text: string): string | null {
+  if (!text) return null;
+  return new Bun.CryptoHasher("sha256").update(text).digest("hex").slice(0, 32);
 }

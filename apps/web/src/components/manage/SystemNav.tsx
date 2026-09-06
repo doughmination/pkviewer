@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Globe2, Grid1x2, Link45deg, PaletteFill, People, Sliders } from "react-bootstrap-icons";
+import { CodeSlash, Globe2, Grid1x2, Link45deg, PaletteFill, People, Sliders } from "react-bootstrap-icons";
 
 /**
  * Section navigation.
@@ -16,6 +16,9 @@ const SECTIONS = [
   { slug: "directory", label: "Layout", Icon: Sliders },
   { slug: "links", label: "Social links", Icon: Link45deg },
   { slug: "members", label: "Members", Icon: People },
+  // Last, and named "Advanced" on purpose: everything above it is a supported
+  // control that cannot produce a broken page, and this one can.
+  { slug: "css", label: "Advanced CSS", Icon: CodeSlash },
 ];
 
 export function SystemNav({ systemId }: { systemId: string }) {

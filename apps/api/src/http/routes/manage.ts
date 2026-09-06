@@ -12,6 +12,8 @@ import {
   readTheme,
   saveSocialLinks,
   saveTheme,
+  readCss,
+  saveCss,
   type SystemRow,
 } from "../../manage/index.ts";
 import { offeredBadgesFor, respondToBadge, type RespondAction } from "../../manage/recognition.ts";
@@ -245,6 +247,33 @@ export function manageRoutes(deps: Deps): Hono {
 
     audit(db, now(), ctx.accountId, "socials.member.saved", found.memberId);
     return c.json({ ok: true, saved: result.saved });
+  });
+
+  /**
+   * Custom CSS.
+   *
+   * The API compiles on save and stores the result; the web tier renders what
+   * it is given. Both halves of that matter — the compiler is the security
+   * boundary, so it must be the only one, and it must not run at render time.
+   */
+  app.get("/systems/:systemId/css", (c) => {
+    const ctx = withSystem(c);
+    if (ctx instanceof Response) return ctx;
+    return c.json(readCss(db, "system", ctx.system.id));
+  });
+
+  app.put("/systems/:systemId/css", async (c) => {
+    const ctx = withSystem(c);
+    if (ctx instanceof Response) return ctx;
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const result = saveCss(
+      db,
+      { ownerType: "system", ownerId: ctx.system.id, source: body["css"], accountId: ctx.accountId },
+      now(),
+    );
+    if (!result.ok) return c.json({ error: "invalid", issues: result.issues }, 422);
+    audit(db, now(), ctx.accountId, "css.saved", ctx.system.id);
+    return c.json({ ok: true, issues: result.issues, kept: result.kept });
   });
 
   /**

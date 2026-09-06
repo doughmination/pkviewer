@@ -55,6 +55,7 @@ import type { PublicBadge } from "./recognition.ts";
 export * from "./theme/index.ts";
 export * from "./social.ts";
 export * from "./recognition.ts";
+export * from "./css/sanitize.ts";
 
 export type PageModel = {
   system: SystemView;
@@ -75,4 +76,12 @@ export type PageModel = {
    * on every member page would misattribute it.
    */
   badges: PublicBadge[];
+  /**
+   * Compiled custom CSS, already scoped and allow-listed by the API.
+   *
+   * Never the text an author typed. The web tier places this in a <style> and
+   * does no checking of its own — the compiler is the boundary, and having two
+   * would mean two things to keep in step.
+   */
+  css: string;
 };

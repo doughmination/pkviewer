@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { BADGE_ICON_IDS, BADGE_TONE_IDS, BADGE_STATES, type BadgeState } from "@pkviewer/shared";
 import {
-  badgeNeedsNoConsent,
   buildCreditsPage,
   deleteCredit,
   deleteSection,
@@ -21,7 +20,7 @@ import {
   saveSection,
 } from "../../admin/index.ts";
 import { resolveSession } from "../../auth/sessions.ts";
-import { accountManagesSystem, ensureSystemRow } from "../../claims/index.ts";
+import { ensureSystemRow } from "../../claims/index.ts";
 import type { Config } from "../../config/index.ts";
 import type { Db } from "../../db/index.ts";
 import type { PkClient } from "../../pk/client.ts";
@@ -129,10 +128,9 @@ export function adminRoutes(deps: Deps): Hono {
    * internal id: an admin is looking at a page, not at a database.
    *
    * A system pkviewer has never seen is resolved through PluralKit and given a
-   * local row — but ONLY for a badge that needs no consent. Granting a
-   * consent-required badge to a stranger would create an offer nobody can ever
-   * receive: it would read as granted in the admin list and be invisible
-   * everywhere else, permanently. Refusing says so instead.
+   * local row. Badges are opt-out, so this needs no account on the recipient's
+   * side — which is the point: somebody who fixed a bug should not have to sign
+   * up to a third-party site to be credited for it.
    */
   app.post("/assignments", async (c) => {
     const who = admin(c);
@@ -145,9 +143,6 @@ export function adminRoutes(deps: Deps): Hono {
     let systemId = resolveSystemId(db, ref);
 
     if (!systemId) {
-      if (!badgeNeedsNoConsent(db, badgeId)) {
-        return c.json({ error: "unknown_subject" }, 404);
-      }
       // A read against the public PluralKit API, exactly as a public page does.
       // No credential, and nothing is written unless PluralKit knows the system.
       try {
@@ -161,10 +156,6 @@ export function adminRoutes(deps: Deps): Hono {
       }
     }
 
-    // Consent is the reason a grant starts pending. When the granting admin is
-    // also the system's manager there is nobody else to ask.
-    const autoAccept = accountManagesSystem(db, who, systemId);
-
     const result = grantBadge(
       db,
       {
@@ -172,7 +163,6 @@ export function adminRoutes(deps: Deps): Hono {
         badgeId,
         note: body["note"],
         byAccount: who,
-        autoAccept,
       },
       now(),
     );

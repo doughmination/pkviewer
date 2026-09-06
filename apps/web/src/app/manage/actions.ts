@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { CssIssue } from "@pkviewer/shared";
 import { manageApi } from "@/lib/manage-api.ts";
 
 /**
@@ -297,4 +298,29 @@ export async function respondToBadgeAction(
   // The public page renders accepted badges, so it has to re-render too.
   revalidatePath("/s", "layout");
   return { ok: true };
+}
+
+export type CssSaveResult = ActionResult & {
+  issues?: CssIssue[];
+  kept?: number;
+};
+
+/**
+ * Saves custom CSS.
+ *
+ * The API compiles it and answers with what it kept and what it dropped, so
+ * the editor reports the truth rather than guessing — a rule that was silently
+ * discarded looks identical to a rule that did nothing.
+ */
+export async function saveSystemCss(systemId: string, css: string): Promise<CssSaveResult> {
+  const result = await manageApi.put<{ issues?: CssSaveResult["issues"]; kept?: number }>(
+    `/manage/systems/${systemId}/css`,
+    { css },
+  );
+  if (!result.ok) {
+    return { ok: false, error: messageFor(result.error, result.status) };
+  }
+  revalidatePath(`/manage/${systemId}`, "layout");
+  revalidatePath("/s", "layout");
+  return { ok: true, issues: result.value.issues ?? [], kept: result.value.kept ?? 0 };
 }

@@ -185,7 +185,7 @@ describe("admin routes", () => {
    * local row, and the badge shows at once — it is the one badge that does not
    * wait for an answer (migration 007).
    */
-  test("PK Dev reaches a system with no pkviewer account", async () => {
+  test("a grant reaches a system with no pkviewer account", async () => {
     const admin = account();
     grantAdmin(db, admin, NOW);
 
@@ -225,23 +225,17 @@ describe("admin routes", () => {
     expect(db.query("SELECT id FROM subject_badges").all()).toHaveLength(1);
   });
 
-  /**
-   * Every other badge still refuses a stranger.
-   *
-   * A consent-required badge granted to a system with no account is an offer
-   * nobody can ever receive: granted in the admin list, invisible everywhere
-   * else, permanently. Refusing says so instead.
-   */
-  test("a consent-required badge refuses a system with no account", async () => {
+  // Badges are opt-out, so no badge needs an account on the receiving end.
+  test("any badge reaches a system with no pkviewer account", async () => {
     const admin = account();
     grantAdmin(db, admin, NOW);
     const res = await call("/assignments", {
       method: "POST",
       token: sessionFor(admin),
-      body: { subject: PK_SYSTEM.id, badgeId: "friend" },
+      body: { subject: PK_SYSTEM.id, badgeId: "ea-bug-hunter" },
     });
-    expect(res.status).toBe(404);
-    expect(db.query("SELECT id FROM systems").all()).toHaveLength(0);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { assignment: { state: string } }).assignment.state).toBe("accepted");
   });
 
   test("granting to a system PluralKit does not have is a 404", async () => {

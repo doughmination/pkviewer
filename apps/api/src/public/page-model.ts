@@ -2,6 +2,7 @@ import { resolveComposition, type MemberView, type PageModel, type SocialLink, t
 import type { Db } from "../db/index.ts";
 import type { PkClient } from "../pk/client.ts";
 import type { PkMember, PkSystem } from "../pk/types.ts";
+import { compiledCssFor } from "../manage/index.ts";
 import { publicBadgesFor } from "../manage/recognition.ts";
 import { activeSlugFor } from "../slugs/claim.ts";
 import { memberPath, resolveMemberRef, resolveSystemRef, systemPath } from "../slugs/resolve.ts";
@@ -252,6 +253,7 @@ export async function buildSystemPage(
       // Accepted grants only, and system pages only: a badge recognises the
       // system, not each of its members.
       badges: publicBadgesFor(deps.db, systemId),
+      css: compiledCssFor(deps.db, "system", systemId),
       canonicalPath: systemPath(system.id, slug),
     },
   };
@@ -306,6 +308,15 @@ export async function buildMemberPage(
       tokens: resolveTokens(systemTokens, memberTokens),
       composition,
       badges: [],
+      // A member page gets the system's stylesheet plus its own, in that order,
+      // so a member overrides rather than starts from nothing — the same
+      // inheritance the token vocabulary has.
+      css: [
+        compiledCssFor(deps.db, "system", systemId),
+        compiledCssFor(deps.db, "member", memberId),
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
       canonicalPath: memberPath(system.id, systemSlug, member.id, memberSlug),
     },
   };

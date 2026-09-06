@@ -18,7 +18,7 @@ import {
 import { accountManagesSystem } from "../src/claims/index.ts";
 import { openDb, type Db } from "../src/db/index.ts";
 import { migrate } from "../src/db/migrate.ts";
-import { authorizeSystem } from "../src/manage/index.ts";
+import { authorizeSystem, readCss, saveCss } from "../src/manage/index.ts";
 import {
   offeredBadgesFor,
   publicBadgesFor,
@@ -150,22 +150,13 @@ describe("the admin boundary", () => {
 });
 
 describe("badge consent", () => {
-  test("a granted badge does not appear publicly until it is accepted", () => {
+  test("a granted badge appears at once", () => {
     const admin = account();
     const sys = system();
     grantAdmin(db, admin, NOW);
 
-    const granted = grantBadge(
-      db,
-      { subjectId: sys, badgeId: "bug-hunter", byAccount: admin, autoAccept: false },
-      NOW,
-    );
+    const granted = grantBadge(db, { subjectId: sys, badgeId: "bug-hunter", byAccount: admin }, NOW);
     expect(granted.ok).toBe(true);
-    expect(publicBadgesFor(db, sys)).toEqual([]);
-
-    const owner = account();
-    manages(owner, sys);
-    respondToBadge(db, sys, "bug-hunter", "accept", NOW, owner);
     expect(publicBadgesFor(db, sys).map((b) => b.id)).toEqual(["bug-hunter"]);
   });
 
@@ -175,7 +166,7 @@ describe("badge consent", () => {
     const sys = system();
     grantAdmin(db, admin, NOW);
     manages(owner, sys);
-    grantBadge(db, { subjectId: sys, badgeId: "friend", byAccount: admin, autoAccept: true }, NOW);
+    grantBadge(db, { subjectId: sys, badgeId: "friend", byAccount: admin }, NOW);
     expect(publicBadgesFor(db, sys)).toHaveLength(1);
 
     // Hiding and un-hiding are their own transitions: `accept` deliberately
@@ -195,29 +186,13 @@ describe("badge consent", () => {
     expect(publicBadgesFor(db, sys)).toHaveLength(0);
   });
 
-  // The Owner badge. Granting a badge to your own system needs no consent
-  // dance, because the person consenting is the person granting.
-  test("a grant auto-accepts only when the granter manages the subject", () => {
-    const admin = account();
-    const ownSystem = system("mine");
-    const otherSystem = system("theirs");
-    grantAdmin(db, admin, NOW);
-    manages(admin, ownSystem);
-
-    grantBadge(db, { subjectId: ownSystem, badgeId: "owner", byAccount: admin, autoAccept: true }, NOW);
-    grantBadge(db, { subjectId: otherSystem, badgeId: "owner", byAccount: admin, autoAccept: false }, NOW);
-
-    expect(publicBadgesFor(db, ownSystem)).toHaveLength(1);
-    expect(publicBadgesFor(db, otherSystem)).toHaveLength(0);
-  });
-
   test("a recipient cannot revoke, and an admin revocation is not undone by them", () => {
     const admin = account();
     const owner = account();
     const sys = system();
     grantAdmin(db, admin, NOW);
     manages(owner, sys);
-    grantBadge(db, { subjectId: sys, badgeId: "friend", byAccount: admin, autoAccept: true }, NOW);
+    grantBadge(db, { subjectId: sys, badgeId: "friend", byAccount: admin }, NOW);
     revokeBadge(db, listAssignments(db)[0]!.id, NOW, admin);
 
     // Revoked is an admin state. It is reported as not_found so the recipient
@@ -231,7 +206,7 @@ describe("badge consent", () => {
     const admin = account();
     const sys = system();
     grantAdmin(db, admin, NOW);
-    grantBadge(db, { subjectId: sys, badgeId: "friend", byAccount: admin, autoAccept: false }, NOW);
+    grantBadge(db, { subjectId: sys, badgeId: "friend", byAccount: admin }, NOW);
     expect(offeredBadgesFor(db, sys)).toHaveLength(1);
     revokeBadge(db, listAssignments(db)[0]!.id, NOW, admin);
     expect(offeredBadgesFor(db, sys)).toHaveLength(0);
@@ -242,7 +217,7 @@ describe("badge consent", () => {
     grantAdmin(db, admin, NOW);
     const result = grantBadge(
       db,
-      { subjectId: randomUUID(), badgeId: "friend", byAccount: admin, autoAccept: false },
+      { subjectId: randomUUID(), badgeId: "friend", byAccount: admin },
       NOW,
     );
     expect(result).toEqual({ ok: false, reason: "unknown_subject" });
@@ -252,8 +227,8 @@ describe("badge consent", () => {
     const admin = account();
     const sys = system();
     grantAdmin(db, admin, NOW);
-    grantBadge(db, { subjectId: sys, badgeId: "friend", byAccount: admin, autoAccept: true }, NOW);
-    grantBadge(db, { subjectId: sys, badgeId: "friend", byAccount: admin, autoAccept: true }, NOW);
+    grantBadge(db, { subjectId: sys, badgeId: "friend", byAccount: admin }, NOW);
+    grantBadge(db, { subjectId: sys, badgeId: "friend", byAccount: admin }, NOW);
     expect(listAssignments(db)).toHaveLength(1);
     expect(publicBadgesFor(db, sys)).toHaveLength(1);
   });
@@ -268,6 +243,7 @@ describe("the badge catalogue", () => {
     expect(listBadges(db).map((b) => b.id).sort()).toEqual([
       "bug-hunter",
       "contributor",
+      "ea-bug-hunter",
       "friend",
       "girlfriend",
       "owner",
@@ -345,7 +321,7 @@ describe("the badge catalogue", () => {
     const admin = account();
     const sys = system();
     grantAdmin(db, admin, NOW);
-    grantBadge(db, { subjectId: sys, badgeId: "friend", byAccount: admin, autoAccept: true }, NOW);
+    grantBadge(db, { subjectId: sys, badgeId: "friend", byAccount: admin }, NOW);
 
     retireBadge(db, "friend", NOW, admin);
     expect(publicBadgesFor(db, sys)).toHaveLength(1);
@@ -354,7 +330,7 @@ describe("the badge catalogue", () => {
     const other = system("second");
     const result = grantBadge(
       db,
-      { subjectId: other, badgeId: "friend", byAccount: admin, autoAccept: true },
+      { subjectId: other, badgeId: "friend", byAccount: admin },
       NOW,
     );
     expect(result).toEqual({ ok: false, reason: "badge_retired" });
@@ -422,7 +398,7 @@ describe("audit", () => {
     const admin = account();
     const sys = system();
     grantAdmin(db, admin, NOW);
-    grantBadge(db, { subjectId: sys, badgeId: "friend", byAccount: admin, autoAccept: true }, NOW);
+    grantBadge(db, { subjectId: sys, badgeId: "friend", byAccount: admin }, NOW);
     revokeBadge(db, listAssignments(db)[0]!.id, NOW, admin);
 
     const actions = db
@@ -439,12 +415,12 @@ describe("audit", () => {
     const sys = system();
     grantAdmin(db, admin, NOW);
     manages(owner, sys);
-    grantBadge(db, { subjectId: sys, badgeId: "friend", byAccount: admin, autoAccept: false }, NOW);
-    respondToBadge(db, sys, "friend", "accept", NOW, owner);
+    grantBadge(db, { subjectId: sys, badgeId: "friend", byAccount: admin }, NOW);
+    respondToBadge(db, sys, "friend", "decline", NOW, owner);
 
     const row = db
       .query<{ account_id: string | null }, []>(
-        "SELECT account_id FROM audit_events WHERE action = 'badge.accept'",
+        "SELECT account_id FROM audit_events WHERE action = 'badge.decline'",
       )
       .get();
     expect(row?.account_id).toBe(owner);
@@ -500,20 +476,22 @@ describe("a badge reaches the public page model", () => {
     return { systemId, owner };
   }
 
-  test("accepted badges appear on the system page, pending ones do not", async () => {
+  test("a granted badge reaches the page, and hiding it removes it again", async () => {
     const admin = account();
     grantAdmin(db, admin, NOW);
     const { systemId, owner } = seedClaimedSystem();
     const client = pk();
 
-    grantBadge(db, { subjectId: systemId, badgeId: "owner", byAccount: admin, autoAccept: false }, NOW);
+    grantBadge(db, { subjectId: systemId, badgeId: "owner", byAccount: admin }, NOW);
 
-    const before = await buildSystemPage({ db, pk: client }, SYS.id);
-    expect(before.ok).toBe(true);
-    if (before.ok) expect(before.value.badges).toEqual([]);
+    const hidden = await buildSystemPage({ db, pk: client }, SYS.id);
+    expect(hidden.ok).toBe(true);
 
-    respondToBadge(db, systemId, "owner", "accept", NOW, owner);
+    respondToBadge(db, systemId, "owner", "hide", NOW, owner);
+    const gone = await buildSystemPage({ db, pk: client }, SYS.id);
+    expect(gone.ok && gone.value.badges).toEqual([]);
 
+    respondToBadge(db, systemId, "owner", "show", NOW, owner);
     const after = await buildSystemPage({ db, pk: client }, SYS.id);
     expect(after.ok).toBe(true);
     if (after.ok) {
@@ -533,7 +511,7 @@ describe("a badge reaches the public page model", () => {
     const admin = account();
     grantAdmin(db, admin, NOW);
     const { systemId, owner } = seedClaimedSystem();
-    grantBadge(db, { subjectId: systemId, badgeId: "owner", byAccount: admin, autoAccept: true }, NOW);
+    grantBadge(db, { subjectId: systemId, badgeId: "owner", byAccount: admin }, NOW);
     void owner;
 
     const page = await buildSystemPage({ db, pk: pk() }, SYS.id);
@@ -551,7 +529,7 @@ describe("a badge reaches the public page model", () => {
     const { systemId } = seedClaimedSystem();
     grantBadge(
       db,
-      { subjectId: systemId, badgeId: "owner", note: "internal note", byAccount: admin, autoAccept: true },
+      { subjectId: systemId, badgeId: "owner", note: "internal note", byAccount: admin },
       NOW,
     );
 
@@ -573,92 +551,61 @@ describe("a badge reaches the public page model", () => {
 });
 
 /**
- * PK Dev: the badge that does not wait for an answer.
+ * Badges are opt-out (migration 008).
  *
- * The people it recognises have no reason to hold a pkviewer account, so an
- * offer would be a badge that never appears. Everything else still waits — the
- * exception is a column in the data (migration 007), not a branch keyed on a
- * badge id, so it stays visible and reviewable.
+ * A grant shows immediately and its recipient turns it off if they want to.
+ * The trade is that a badge can appear before its recipient has seen it, so
+ * what matters is that removal stayed exactly where it was.
  */
-describe("badges that need no consent", () => {
-  test("PK Dev is the only badge exempt from consent", () => {
-    const exempt = listBadges(db).filter((b) => !b.consentRequired).map((b) => b.id);
-    expect(exempt).toEqual(["pk-dev"]);
-  });
-
-  test("a PK Dev grant shows immediately, with no account involved", () => {
+describe("opt-out recognition", () => {
+  test("every badge shows on grant, with no account involved", () => {
     const admin = account();
     grantAdmin(db, admin, NOW);
-    const sys = system("abcde"); // five characters: PluralKit issues both lengths
-    // Nobody manages this system, so autoAccept is false — and it shows anyway.
-    const result = grantBadge(
-      db,
-      { subjectId: sys, badgeId: "pk-dev", byAccount: admin, autoAccept: false },
-      NOW,
-    );
-    expect(result.ok).toBe(true);
-    expect(publicBadgesFor(db, sys).map((b) => b.id)).toEqual(["pk-dev"]);
+    for (const badgeId of listBadges(db).map((b) => b.id)) {
+      const sys = system(badgeId.slice(0, 5));
+      grantBadge(db, { subjectId: sys, badgeId, byAccount: admin }, NOW);
+      expect(publicBadgesFor(db, sys).map((b) => b.id), badgeId).toEqual([badgeId]);
+    }
   });
 
-  test("every other badge still waits, granted the same way", () => {
+  test("nothing is left waiting for an answer", () => {
     const admin = account();
     grantAdmin(db, admin, NOW);
     const sys = system();
-    for (const badgeId of ["owner", "girlfriend", "friend", "bug-hunter", "security", "contributor"]) {
-      grantBadge(db, { subjectId: sys, badgeId, byAccount: admin, autoAccept: false }, NOW);
-    }
-    expect(publicBadgesFor(db, sys)).toEqual([]);
+    grantBadge(db, { subjectId: sys, badgeId: "friend", byAccount: admin }, NOW);
+    expect(listAssignments(db).map((a) => a.state)).toEqual(["accepted"]);
   });
 
   /**
-   * The exemption is from asking first, not from being removable. Once someone
-   * claims their system it behaves like any other badge — otherwise "shows
-   * without consent" would mean "cannot be taken down", which is a different
-   * and much worse thing.
+   * The default flipped; the control did not. Showing without asking would be a
+   * very different thing if it also meant the recipient could not take it down.
    */
-  test("the recipient can still take it down once they claim", () => {
+  test("the recipient can still turn any badge off", () => {
     const admin = account();
     const owner = account();
     grantAdmin(db, admin, NOW);
     const sys = system();
-    grantBadge(db, { subjectId: sys, badgeId: "pk-dev", byAccount: admin, autoAccept: false }, NOW);
     manages(owner, sys);
+    grantBadge(db, { subjectId: sys, badgeId: "girlfriend", byAccount: admin }, NOW);
 
-    expect(offeredBadgesFor(db, sys).map((b) => b.state)).toEqual(["accepted"]);
-    expect(respondToBadge(db, sys, "pk-dev", "decline", NOW, owner).ok).toBe(true);
+    expect(respondToBadge(db, sys, "girlfriend", "hide", NOW, owner).ok).toBe(true);
+    expect(publicBadgesFor(db, sys)).toEqual([]);
+    expect(respondToBadge(db, sys, "girlfriend", "show", NOW, owner).ok).toBe(true);
+    expect(publicBadgesFor(db, sys)).toHaveLength(1);
+    expect(respondToBadge(db, sys, "girlfriend", "decline", NOW, owner).ok).toBe(true);
     expect(publicBadgesFor(db, sys)).toEqual([]);
   });
 
-  test("an admin can revoke it without the recipient", () => {
+  test("an admin can revoke without the recipient", () => {
     const admin = account();
     grantAdmin(db, admin, NOW);
     const sys = system();
-    grantBadge(db, { subjectId: sys, badgeId: "pk-dev", byAccount: admin, autoAccept: false }, NOW);
+    grantBadge(db, { subjectId: sys, badgeId: "pk-dev", byAccount: admin }, NOW);
     revokeBadge(db, listAssignments(db)[0]!.id, NOW, admin);
     expect(publicBadgesFor(db, sys)).toEqual([]);
   });
 
-  // Turning consent off is a migration-level decision, so the editable surface
-  // must not be able to reach it. Editing a badge's wording must not silently
-  // make it consent-free, and creating one must not start it that way.
-  test("saving a badge cannot change whether it needs consent", () => {
-    const before = listBadges(db).find((b) => b.id === "pk-dev")!;
-    saveBadge(
-      db,
-      { id: "pk-dev", label: before.label, description: before.description, icon: "gem", tone: "green" },
-      NOW,
-    );
-    expect(listBadges(db).find((b) => b.id === "pk-dev")!.consentRequired).toBe(false);
-
-    saveBadge(
-      db,
-      { id: "translator", label: "Translator", description: "Translated pkviewer.", icon: "gem", tone: "teal" },
-      NOW,
-    );
-    expect(listBadges(db).find((b) => b.id === "translator")!.consentRequired).toBe(true);
-  });
-
-  // A `systems` row is created for a PK dev who has never used pkviewer. That
+  // A `systems` row is created for someone who has never used pkviewer. That
   // row must not make their public page claim to be managed here.
   test("a badged stranger's page does not report itself as claimed", async () => {
     const admin = account();
@@ -667,7 +614,7 @@ describe("badges that need no consent", () => {
     db.query(
       "INSERT INTO systems (id, pk_system_uuid, pk_system_hid, created_at) VALUES (?,?,?,?)",
     ).run(systemId, "8b0655f4-055a-46b9-a5fc-a099e8a6b810", "tythty", NOW);
-    grantBadge(db, { subjectId: systemId, badgeId: "pk-dev", byAccount: admin, autoAccept: false }, NOW);
+    grantBadge(db, { subjectId: systemId, badgeId: "pk-dev", byAccount: admin }, NOW);
 
     const impl = (async (input: string | URL) => {
       const path = String(input).replace("https://api.pluralkit.me/v2", "");
@@ -694,8 +641,134 @@ describe("badges that need no consent", () => {
     expect(page.ok).toBe(true);
     if (page.ok) {
       expect(page.value.badges.map((b) => b.id)).toEqual(["pk-dev"]);
-      // Known to pkviewer, but nobody has claimed it.
       expect(page.value.system.claimed).toBe(false);
     }
+  });
+});
+
+/**
+ * Custom CSS, end to end.
+ *
+ * The layout feature was once fully editable, saved correctly, and never
+ * reached a public page. CSS has the same shape — a management screen, a
+ * column, a renderer — so this follows a stylesheet from save to page model,
+ * and checks that what arrives is the COMPILED text rather than the author's.
+ */
+describe("custom CSS reaches the page compiled, never raw", () => {
+  const SYS2 = {
+    id: "tythty",
+    uuid: "8b0655f4-055a-46b9-a5fc-a099e8a6b810",
+    name: "Doughmination",
+    description: null,
+  };
+
+  function client(): PkClient {
+    const impl = (async (input: string | URL) => {
+      const path = String(input).replace("https://api.pluralkit.me/v2", "");
+      if (path.endsWith("/members")) return Response.json([]);
+      return Response.json(SYS2);
+    }) as unknown as typeof fetch;
+    return new PkClient({
+      apiBase: "https://api.pluralkit.me/v2",
+      userAgent: "pkviewer/test (+https://github.com/owner/pkviewer)",
+      readRps: 1000,
+      writeRps: 1000,
+      fetchImpl: impl,
+      snapshots: new MemorySnapshotStore(),
+      sleep: async () => {},
+      maxRetries: 0,
+    });
+  }
+
+  function claimed(): { systemId: string; owner: string } {
+    const owner = account();
+    const systemId = randomUUID();
+    db.query(
+      "INSERT INTO systems (id, pk_system_uuid, pk_system_hid, claimed_at, created_at) VALUES (?,?,?,?,?)",
+    ).run(systemId, SYS2.uuid, SYS2.id, NOW, NOW);
+    manages(owner, systemId);
+    return { systemId, owner };
+  }
+
+  test("a saved stylesheet reaches the page, scoped", async () => {
+    const { systemId, owner } = claimed();
+    const saved = saveCss(
+      db,
+      { ownerType: "system", ownerId: systemId, source: ".card { color: #fff }", accountId: owner },
+      NOW,
+    );
+    expect(saved.ok).toBe(true);
+
+    const page = await buildSystemPage({ db, pk: client() }, SYS2.id);
+    expect(page.ok).toBe(true);
+    if (page.ok) {
+      expect(page.value.css).toContain("#pkv-user .card");
+      expect(page.value.css).toContain("color: #fff");
+    }
+  });
+
+  // The compiler is the boundary and it runs on WRITE. If the raw source ever
+  // reached a page, every guarantee in the css test suite would be decorative.
+  test("what a page receives is never the author's text", async () => {
+    const { systemId, owner } = claimed();
+    saveCss(
+      db,
+      {
+        ownerType: "system",
+        ownerId: systemId,
+        source: ".a { width: </style><img src=x onerror=alert(1)> }\n.b { color: #fff }",
+        accountId: owner,
+      },
+      NOW,
+    );
+
+    const page = await buildSystemPage({ db, pk: client() }, SYS2.id);
+    expect(page.ok).toBe(true);
+    if (page.ok) {
+      expect(page.value.css).not.toContain("<");
+      expect(page.value.css).not.toContain("onerror");
+      // The valid rule beside it still applies.
+      expect(page.value.css).toContain("color: #fff");
+    }
+  });
+
+  test("the author keeps their text, and the problems come back with it", () => {
+    const { systemId, owner } = claimed();
+    const source = ".a { position: fixed }\n.b { color: #fff }";
+    saveCss(db, { ownerType: "system", ownerId: systemId, source, accountId: owner }, NOW);
+
+    const stored = readCss(db, "system", systemId);
+    // Their file, unchanged — losing what somebody typed is not an option.
+    expect(stored.source).toBe(source);
+    expect(stored.issues).toHaveLength(1);
+    expect(stored.issues[0]?.kind).toBe("value_not_allowed");
+  });
+
+  test("clearing the box removes the stylesheet from the page", async () => {
+    const { systemId, owner } = claimed();
+    saveCss(db, { ownerType: "system", ownerId: systemId, source: ".a { color: #fff }", accountId: owner }, NOW);
+    saveCss(db, { ownerType: "system", ownerId: systemId, source: "", accountId: owner }, NOW);
+
+    const page = await buildSystemPage({ db, pk: client() }, SYS2.id);
+    expect(page.ok && page.value.css).toBe("");
+  });
+
+  test("a system with no stylesheet gets an empty one, not null", async () => {
+    claimed();
+    const page = await buildSystemPage({ db, pk: client() }, SYS2.id);
+    expect(page.ok && page.value.css).toBe("");
+  });
+
+  test("an oversized stylesheet is refused rather than half-saved", () => {
+    const { systemId, owner } = claimed();
+    saveCss(db, { ownerType: "system", ownerId: systemId, source: ".a { color: #fff }", accountId: owner }, NOW);
+    const result = saveCss(
+      db,
+      { ownerType: "system", ownerId: systemId, source: ".a { color: #fff }".repeat(3000), accountId: owner },
+      NOW,
+    );
+    expect(result.ok).toBe(false);
+    // The previous stylesheet is untouched (M3: validate, then write).
+    expect(readCss(db, "system", systemId).source).toBe(".a { color: #fff }");
   });
 });

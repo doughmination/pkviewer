@@ -7,22 +7,22 @@ import { Section } from "@/components/manage/Shell.tsx";
 import { respondToBadgeAction } from "@/app/manage/actions.ts";
 
 /**
- * Badges offered to this system.
+ * Badges pkviewer has given this system.
  *
- * The recipient's half of the feature. pkviewer decides whether to offer a
- * badge; the system decides whether it appears. "Girlfriend" is a fact about a
- * person, and a security badge names someone in connection with a
- * vulnerability — neither should land on a page without its owner agreeing.
- *
- * Declining is not hidden behind a confirmation, and hiding is reversible: the
- * cost of a wrong answer here should be zero.
+ * The recipient's half of the feature. Badges are opt-out: pkviewer gives one
+ * and it appears, and this is where it comes off again. That makes the removal
+ * path the important one — a badge naming a relationship or a security report
+ * lands before its subject has seen it, so turning it off has to be one
+ * obvious click, reversible, and never behind a confirmation.
  */
 
 const EXPLAIN: Record<BadgeState, string> = {
-  pending: "Offered by pkviewer. It is not on your page yet.",
+  // Nothing is granted as `pending` any more; the wording stays for rows
+  // granted before badges became opt-out.
+  pending: "Given by pkviewer. Not on your page yet.",
   accepted: "Showing on your system page.",
-  hidden: "Hidden. Nobody can tell it was ever granted.",
-  declined: "Declined. You can still accept it later.",
+  hidden: "Hidden. Nobody can tell it was ever given.",
+  declined: "Turned off. You can put it back at any time.",
   revoked: "",
 };
 
@@ -45,16 +45,10 @@ export function BadgeOffers({
     });
   };
 
-  const waiting = badges.filter((b) => b.state === "pending").length;
-
   return (
     <Section
       title="Recognition"
-      description={
-        waiting > 0
-          ? `pkviewer has offered you ${waiting === 1 ? "a badge" : `${waiting} badges`}. Nothing shows on your page until you accept.`
-          : "Badges pkviewer has given this system."
-      }
+      description="Given by pkviewer. Turn any of them off and it disappears from your page — nobody can tell it was ever there."
     >
       {error ? (
         <p className="mg-note" data-tone="error" role="status" aria-live="polite">
@@ -113,7 +107,7 @@ export function BadgeOffers({
                 disabled={pending}
                 onClick={() => act(badge.id, "decline")}
               >
-                No thanks
+                Turn off
               </button>
             ) : null}
           </li>
